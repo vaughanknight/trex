@@ -62,9 +62,15 @@ func (r *RealPTY) Resize(cols, rows uint16) error {
 
 // Close terminates the PTY and its associated process.
 func (r *RealPTY) Close() error {
-	// Close the PTY file descriptor
+	// Close the PTY file descriptor first - this unblocks any pending reads
 	if err := r.ptmx.Close(); err != nil {
 		return err
+	}
+
+	// Kill the process to ensure it exits (SIGKILL for immediate termination)
+	// This is safe to call even if process has already exited
+	if r.cmd.Process != nil {
+		_ = r.cmd.Process.Kill()
 	}
 
 	// Wait for the process to exit (don't check error - process may already be dead)

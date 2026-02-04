@@ -58,11 +58,46 @@ func TestHandleTerminal_EchoCommand(t *testing.T) {
 	}
 	defer conn.Close()
 
-	// Send initial resize to set terminal size
+	// First, create a session
+	createMsg := terminal.ClientMessage{
+		Type: terminal.MsgTypeCreate,
+	}
+	createBytes, _ := json.Marshal(createMsg)
+	if err := conn.WriteMessage(websocket.TextMessage, createBytes); err != nil {
+		t.Fatalf("Failed to send create: %v", err)
+	}
+
+	// Get session ID from response
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	var sessionID string
+
+	for i := 0; i < 10; i++ {
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			break
+		}
+
+		var msg terminal.ServerMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			continue
+		}
+
+		if msg.Type == terminal.MsgTypeSessionCreated {
+			sessionID = msg.SessionId
+			break
+		}
+	}
+
+	if sessionID == "" {
+		t.Fatal("Did not receive session ID")
+	}
+
+	// Send resize for the session
 	resizeMsg := terminal.ClientMessage{
-		Type: terminal.MsgTypeResize,
-		Cols: 80,
-		Rows: 24,
+		SessionId: sessionID,
+		Type:      terminal.MsgTypeResize,
+		Cols:      80,
+		Rows:      24,
 	}
 	resizeBytes, _ := json.Marshal(resizeMsg)
 	if err := conn.WriteMessage(websocket.TextMessage, resizeBytes); err != nil {
@@ -72,10 +107,11 @@ func TestHandleTerminal_EchoCommand(t *testing.T) {
 	// Give shell time to start
 	time.Sleep(100 * time.Millisecond)
 
-	// Send echo command
+	// Send echo command with session ID
 	inputMsg := terminal.ClientMessage{
-		Type: terminal.MsgTypeInput,
-		Data: "echo hello-test-marker\r",
+		SessionId: sessionID,
+		Type:      terminal.MsgTypeInput,
+		Data:      "echo hello-test-marker\r",
 	}
 	inputBytes, _ := json.Marshal(inputMsg)
 	if err := conn.WriteMessage(websocket.TextMessage, inputBytes); err != nil {
@@ -139,4 +175,201 @@ func TestHandleTerminal_Resize(t *testing.T) {
 
 	// If we get here without error, resize was processed
 	// (Real verification would require checking tty size inside the shell)
+}
+
+// Test Doc:
+// - Why: Multi-session support requires message routing by sessionId
+// - Contract: Messages with sessionId are routed to the correct session
+// - Usage Notes: First message with new sessionId creates session
+// - Quality Contribution: Enables multiple terminals over single WebSocket
+// - Worked Example: Send {sessionId: "s1"} → routed to session s1
+
+func TestHandleTerminal_SessionCreate(t *testing.T) {
+	srv := New("test-version")
+	server := httptest.NewServer(srv)
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
+
+	dialer := websocket.Dialer{}
+	conn, _, err := dialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("WebSocket dial error: %v", err)
+	}
+	defer conn.Close()
+
+	// Request session creation
+	createMsg := terminal.ClientMessage{
+		Type: terminal.MsgTypeCreate,
+	}
+	createBytes, _ := json.Marshal(createMsg)
+	if err := conn.WriteMessage(websocket.TextMessage, createBytes); err != nil {
+		t.Fatalf("Failed to send create: %v", err)
+	}
+
+	// Wait for response with sessionId
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	foundSession := false
+	var sessionID string
+
+	for i := 0; i < 10; i++ {
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			break
+		}
+
+		var msg terminal.ServerMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			continue
+		}
+
+		if msg.Type == terminal.MsgTypeSessionCreated && msg.SessionId != "" {
+			foundSession = true
+			sessionID = msg.SessionId
+			break
+		}
+	}
+
+	if !foundSession {
+		t.Error("Did not receive session created message with sessionId")
+	}
+
+	// Verify session is in registry
+	if srv.registry.Get(sessionID) == nil {
+		t.Errorf("Session %s not found in registry", sessionID)
+	}
+}
+
+func TestHandleTerminal_SessionRouting(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	srv := New("test-version")
+	server := httptest.NewServer(srv)
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
+
+	dialer := websocket.Dialer{}
+	conn, _, err := dialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("WebSocket dial error: %v", err)
+	}
+	defer conn.Close()
+
+	// Create first session
+	createMsg := terminal.ClientMessage{Type: terminal.MsgTypeCreate}
+	createBytes, _ := json.Marshal(createMsg)
+	conn.WriteMessage(websocket.TextMessage, createBytes)
+
+	// Get session ID from response
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	var session1ID string
+
+	for i := 0; i < 10; i++ {
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			break
+		}
+
+		var msg terminal.ServerMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			continue
+		}
+
+		if msg.Type == terminal.MsgTypeSessionCreated {
+			session1ID = msg.SessionId
+			break
+		}
+	}
+
+	if session1ID == "" {
+		t.Fatal("Did not receive session1 ID")
+	}
+
+	// Send input to session 1
+	inputMsg := terminal.ClientMessage{
+		SessionId: session1ID,
+		Type:      terminal.MsgTypeInput,
+		Data:      "echo session1-marker\r",
+	}
+	inputBytes, _ := json.Marshal(inputMsg)
+	conn.WriteMessage(websocket.TextMessage, inputBytes)
+
+	// Verify output comes back with session1 ID
+	conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	foundMarker := false
+
+	for i := 0; i < 50; i++ {
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			break
+		}
+
+		var msg terminal.ServerMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			continue
+		}
+
+		if msg.Type == terminal.MsgTypeOutput &&
+			msg.SessionId == session1ID &&
+			strings.Contains(msg.Data, "session1-marker") {
+			foundMarker = true
+			break
+		}
+	}
+
+	if !foundMarker {
+		t.Error("Did not receive output with correct sessionId")
+	}
+}
+
+func TestHandleTerminal_UnknownSessionId(t *testing.T) {
+	srv := New("test-version")
+	server := httptest.NewServer(srv)
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
+
+	dialer := websocket.Dialer{}
+	conn, _, err := dialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("WebSocket dial error: %v", err)
+	}
+	defer conn.Close()
+
+	// Send message with unknown sessionId
+	inputMsg := terminal.ClientMessage{
+		SessionId: "unknown-session",
+		Type:      terminal.MsgTypeInput,
+		Data:      "test",
+	}
+	inputBytes, _ := json.Marshal(inputMsg)
+	conn.WriteMessage(websocket.TextMessage, inputBytes)
+
+	// Should receive error message
+	conn.SetReadDeadline(time.Now().Add(time.Second))
+	foundError := false
+
+	for i := 0; i < 10; i++ {
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			break
+		}
+
+		var msg terminal.ServerMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			continue
+		}
+
+		if msg.Type == terminal.MsgTypeError {
+			foundError = true
+			break
+		}
+	}
+
+	if !foundError {
+		t.Error("Expected error for unknown sessionId")
+	}
 }

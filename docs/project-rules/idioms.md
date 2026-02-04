@@ -1,6 +1,6 @@
 # trex Project Idioms
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: RATIFIED
 **Last Updated**: 2026-02-04
 
@@ -20,31 +20,44 @@ This document contains recurring patterns, examples, and idiomatic approaches fo
 
 ```
 trex/
-├── cmd/
-│   └── trex/              # Main application entry point
-│       └── main.go        # Entry point with startup diagnostics
-├── internal/
-│   ├── api/               # REST API handlers
-│   ├── ws/                # WebSocket server
-│   ├── persistence/       # Data storage (favorites, groups, preferences)
-│   ├── config/            # Configuration management
-│   ├── startup/           # Pre-flight checks and wizard
-│   └── telemetry/         # OpenTelemetry setup
-├── pkg/                   # Public packages (if any)
-├── frontend/              # Next.js application
-│   ├── app/               # Next.js app router
-│   ├── components/        # React components
-│   └── lib/               # Frontend utilities
+├── backend/                   # Go backend (shared by Web + Electron)
+│   ├── cmd/
+│   │   └── trex/             # Entry point with startup diagnostics
+│   ├── internal/
+│   │   ├── api/              # REST API handlers
+│   │   ├── ws/               # WebSocket server
+│   │   ├── persistence/      # Data storage (favorites, groups, preferences)
+│   │   ├── config/           # Configuration management
+│   │   ├── startup/          # Pre-flight checks and wizard
+│   │   └── telemetry/        # OpenTelemetry setup
+│   ├── pkg/                  # Public packages (if any)
+│   └── go.mod
+├── frontend/                  # Vite + React (shared by Web + Electron)
+│   ├── src/
+│   │   ├── components/       # React components
+│   │   ├── hooks/            # Custom React hooks
+│   │   ├── lib/              # Utilities
+│   │   ├── App.tsx           # Main app component
+│   │   └── main.tsx          # Entry point
+│   ├── vite.config.ts
+│   └── package.json
+├── electron/                  # Electron wrapper (desktop mode only)
+│   ├── main.ts               # Main process (spawns Go, creates window)
+│   ├── preload.ts            # Preload script for IPC
+│   └── electron-builder.yml  # Build configuration
 ├── tests/
-│   ├── unit/              # Unit tests (with fakes)
-│   ├── integration/       # Integration tests (real dependencies)
-│   └── scratch/           # TDD exploration (excluded from CI)
+│   ├── unit/                 # Unit tests (with fakes)
+│   ├── integration/          # Integration tests (real dependencies)
+│   └── scratch/              # TDD exploration (excluded from CI)
 ├── docs/
-│   ├── project-rules/     # Constitution, rules, idioms, architecture
-│   ├── adr/               # Architecture Decision Records
-│   └── protocols/         # WebSocket protocol documentation
+│   ├── project-rules/        # Constitution, rules, idioms, architecture
+│   ├── adr/                  # Architecture Decision Records
+│   └── protocols/            # WebSocket protocol documentation
+├── scripts/
+│   ├── build-web.sh          # Build web distribution
+│   └── build-electron.sh     # Build Electron distribution
 └── .github/
-    ├── ISSUE_TEMPLATE/    # Issue templates
+    ├── ISSUE_TEMPLATE/       # Issue templates
     └── pull_request_template.md
 ```
 

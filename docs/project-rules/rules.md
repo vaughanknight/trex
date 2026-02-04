@@ -1,6 +1,6 @@
 # trex Project Rules
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: RATIFIED
 **Last Updated**: 2026-02-04
 
@@ -103,7 +103,8 @@ Promoted tests MUST include Test Doc blocks with 5 fields:
 - TypeScript MUST compile in strict mode with no errors
 - Dependency vulnerability scans MUST pass
 - Go binary MUST build successfully
-- Next.js production build MUST succeed
+- Vite production build MUST succeed
+- Electron build MUST succeed (for desktop releases)
 
 ### Manual Gates
 
@@ -159,11 +160,13 @@ Promoted tests MUST include Test Doc blocks with 5 fields:
 
 ## Distribution Rules
 
-### Installation
+### Distribution Targets
 
-- trex MUST be distributed as a single binary
-- Go binary MUST embed Next.js static build
-- Separate frontend/backend packages MUST NOT be required
+- trex MUST support both Web and Electron distributions in v1
+- Web mode (`trex`): Go binary MUST embed Vite static build
+- Electron mode (`trex-desktop`): MUST bundle Electron + Go backend + frontend
+- React components MUST be 100% shared between Web and Electron
+- Go backend MUST be identical for both modes
 
 ### Updates
 

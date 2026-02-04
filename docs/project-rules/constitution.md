@@ -1,6 +1,6 @@
 # trex Project Constitution
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Ratified**: 2026-02-04
 **Last Amended**: 2026-02-04
 **Status**: RATIFIED
@@ -9,11 +9,13 @@
 
 <!--
 Sync Impact Report:
-- Mode: CREATE
-- Version: 1.0.0 (initial)
-- All 20 interview questions completed
-- Constitution fully populated
-- Supporting docs (rules, idioms, architecture) aligned
+- Mode: UPDATE
+- Version: 1.0.0 → 1.1.0
+- Changes:
+  - Frontend: Next.js → Vite + React (simpler, better Electron support)
+  - Distribution: Added Electron as v1 target alongside Web
+  - Architecture: Updated to reflect dual distribution model
+- Supporting docs updated: architecture.md, rules.md, idioms.md
 -->
 
 <!-- USER CONTENT START -->
@@ -86,9 +88,18 @@ These principles are **non-negotiable** and guide every design and implementatio
 - **Rationale**: Leverage existing tmax codebase and shared libraries for tmux integration
 - **Strategic alignment**: Code reuse across tmax (CLI) and trex (web UI)
 
-**Frontend**: Next.js with React
-- **Rationale**: Rich UI capabilities, excellent developer tooling, Server Components for performance
+**Frontend**: Vite + React
+- **Rationale**: Fast build tooling, simple SPA architecture, excellent Electron support
+- **Why not Next.js**: trex is a localhost tool with no SSR/SEO needs; Vite is simpler and faster
 - **Requirements**: Browser-based terminal emulation (xterm.js or similar) with native terminal feel
+
+**Distribution**: Dual Target (Web + Electron)
+- **Web App**: Go binary serves static frontend; user opens browser to localhost
+- **Electron App**: Native desktop app; clean "install and launch" experience
+- **Shared codebase**: Same React components, same Go backend, same WebSocket protocol
+- **Rationale**:
+  - Web: Browser tabs enable multitasking alongside trex; no "fat app" for those who prefer lightweight
+  - Electron: Clean install experience; native OS integration (system tray, global hotkeys)
 
 **Communication Layer**: Hybrid Architecture
 - **REST APIs**: Commands and actions (create session, attach, detach, list, etc.)
@@ -98,6 +109,7 @@ These principles are **non-negotiable** and guide every design and implementatio
   - Multiple simultaneous terminal sessions
   - Live session status updates from server
   - Idle session detection (leveraging tmax)
+- **Note**: Same protocol for both Web and Electron; frontend connects to localhost Go server
 
 ### Component Boundaries & Dependencies
 
@@ -250,30 +262,64 @@ trex is a **UI layer**, not an agent integration layer.
 
 ## Distribution
 
-### Installation Method: Single Binary
+### Dual Distribution: Web + Electron (v1)
 
-- Go binary embeds Next.js static build
-- One download, one file, works everywhere
-- No separate frontend/backend packages
+Both distribution formats are supported from v1:
 
-**Future considerations**:
-- Docker image (eventually)
-- Package managers (brew, apt) - maybe in future
+**Web App (`trex`)**:
+- Single Go binary embeds Vite static build
+- User runs `trex`, opens browser to `localhost:3000`
+- Lightweight, no "fat app" overhead
+- Leverage browser tabs for multitasking alongside trex
+- Best for: Users who prefer minimal installs, already live in browser
+
+**Electron App (`trex-desktop`)**:
+- Native desktop application
+- Bundles Electron shell + Go backend + frontend assets
+- Clean "install and launch" experience (no browser step)
+- Native OS integration:
+  - System tray with quick session access
+  - Global hotkeys (session picker even when app not focused)
+  - Native notifications
+  - Auto-start on login (optional)
+- Best for: Users who want dedicated app, native feel
+
+### Shared Architecture
+
+Both distributions share:
+- Same React components (100% code reuse)
+- Same Go backend binary
+- Same WebSocket/REST protocols
+- Same configuration files (`~/.config/trex/`)
+
+```
+trex/
+├── backend/           # Go server (shared)
+├── frontend/          # Vite + React (shared)
+├── electron/          # Electron wrapper (desktop only)
+└── cmd/
+    ├── trex/          # Web mode entry point
+    └── trex-desktop/  # Electron mode entry point
+```
 
 ### Update Mechanism: Self-Update
 
 - `trex update` command for in-place updates
+- Works for both web and Electron distributions
 - No manual downloads after initial install
-- No package manager dependency
 
 ### First-Run Experience: Guided Setup Wizard
 
-- Interactive wizard on first run
+- Interactive wizard on first run (both distributions)
 - Permission checks with clear messaging ("trex needs access to X, Y, Z")
 - Folder configuration (project directories)
 - Validation tests with user guidance
 - Creates necessary config automatically
 - No config file required upfront (wizard generates it)
+
+**Future considerations**:
+- Docker image (for remote tmux server scenarios)
+- Package managers (brew, apt, winget)
 
 ---
 
@@ -559,12 +605,22 @@ Promoted tests require Test Doc blocks with 5 fields:
 
 ## Changelog
 
+### v1.1.0 (2026-02-04)
+
+- **Frontend**: Changed from Next.js to Vite + React
+  - Rationale: Simpler for SPA, no SSR needed, better Electron support
+- **Distribution**: Added Electron as v1 target alongside Web
+  - Web app (`trex`): Go binary serves frontend, user opens browser
+  - Electron app (`trex-desktop`): Native desktop with system tray, global hotkeys
+  - Both share 100% of React components and Go backend
+- Updated architecture documentation to reflect dual distribution
+
 ### v1.0.0 (2026-02-04)
 
 - Initial constitution ratified
 - All 20 interview questions completed
 - Core principles established: DevEx paramount, simplicity, security, amazing UX
-- Technology stack defined: Go backend + Next.js/React frontend
+- Technology stack defined: Go backend + React frontend
 - Architecture documented: trex (UI) ↔ tmax (library) ↔ tmux
 - Quality strategy: TDD, fakes-only, 80%+ coverage
 - Distribution: Single binary with self-update and setup wizard

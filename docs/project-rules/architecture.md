@@ -1,6 +1,6 @@
 # trex Architecture
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: RATIFIED
 **Last Updated**: 2026-02-04
 
@@ -14,9 +14,11 @@
 
 ### System Overview
 
+trex supports two distribution modes with shared core:
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                        Browser (Next.js/React)                           │
+│                    Frontend (Vite + React) - Shared                      │
 │  ┌────────────────┐  ┌────────────────┐  ┌────────────────────────────┐ │
 │  │  Project List  │  │  Session Grid  │  │    Terminal Viewer         │ │
 │  │   (Sidebar)    │  │   (Previews)   │  │    (xterm.js)              │ │
@@ -29,8 +31,22 @@
 │  │  Command Palette (Cmd-K)                                          │   │
 │  └──────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────┘
-         │ REST APIs                            │ WebSocket (terminal I/O)
-         ▼                                      ▼
+                              │
+         ┌────────────────────┼────────────────────┐
+         │                    │                    │
+         ▼                    │                    ▼
+┌─────────────────┐           │           ┌─────────────────┐
+│  Web Mode       │           │           │  Electron Mode  │
+│  (Browser)      │           │           │  (Desktop App)  │
+│                 │           │           │                 │
+│  User opens     │           │           │  Native window  │
+│  localhost:3000 │           │           │  System tray    │
+│  in browser     │           │           │  Global hotkeys │
+└─────────────────┘           │           └─────────────────┘
+                              │
+         │ REST APIs          │          │ WebSocket (terminal I/O)
+         └────────────────────┼──────────┘
+                              ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         trex Backend (Go)                                │
 │  ┌────────────────┐  ┌────────────────┐  ┌────────────────────────────┐ │
@@ -69,9 +85,13 @@
 
 ## Component Responsibilities
 
-### Browser Frontend (Next.js/React)
+### Frontend (Vite + React) - Shared
 
 **Primary Role**: Rich visual interface for tmux session management
+
+**Build Tool**: Vite (fast dev server, optimized production builds)
+**Framework**: React (component-based UI)
+**Why Vite over Next.js**: No SSR needed for localhost tool; simpler architecture; better Electron support
 
 **Components**:
 - **Project List Sidebar**: Favorites, groups, quick access
@@ -85,6 +105,25 @@
 - Multiple simultaneous terminal views
 - Theme and font customization
 - Responsive to browser refresh (restore UI state)
+- 100% code reuse between Web and Electron modes
+
+### Electron Shell (Desktop Mode Only)
+
+**Primary Role**: Native desktop wrapper with OS integration
+
+**Components**:
+- **Main Process**: Launches Go backend, manages windows
+- **System Tray**: Quick access to sessions without opening full window
+- **Global Hotkeys**: Session picker works even when app not focused
+- **Auto-updater**: Native update experience
+- **Notifications**: Native OS notifications for session events
+
+**Electron-Specific Features**:
+- System tray icon with session list
+- Global hotkey for session picker (e.g., Cmd+Shift+T)
+- Native notifications for idle sessions
+- Auto-start on login (optional)
+- Proper macOS/Windows/Linux integration
 
 ### trex Backend (Go)
 
@@ -296,16 +335,56 @@ interface ServerMessage {
 
 ## Deployment Architecture (v1)
 
-### Localhost Only
+### Dual Distribution Model
 
+Both Web and Electron are v1 targets:
+
+**Web Mode** (`trex`):
 ```
 Developer Machine (localhost)
-├── trex binary (Go backend + embedded Next.js build)
+├── trex binary (Go backend + embedded Vite build)
 │   ├── HTTP server: http://localhost:3000
 │   └── WebSocket: ws://localhost:3000/ws
 ├── tmux (system process, independent)
 └── Browser (Chrome/Firefox/Safari)
-    └── Connects to localhost:3000
+    └── User opens localhost:3000
+```
+
+**Electron Mode** (`trex-desktop`):
+```
+Developer Machine
+├── trex-desktop.app (or .exe / AppImage)
+│   ├── Electron shell (Chromium + Node.js)
+│   ├── Go backend (spawned as child process)
+│   │   ├── HTTP server: http://localhost:3000
+│   │   └── WebSocket: ws://localhost:3000/ws
+│   └── Renderer (Vite React app)
+├── tmux (system process, independent)
+└── System tray icon (optional)
+```
+
+### Project Structure
+
+```
+trex/
+├── backend/               # Go server (shared)
+│   ├── cmd/trex/         # Entry point
+│   ├── internal/         # API, WebSocket, persistence
+│   └── go.mod
+├── frontend/             # Vite + React (shared)
+│   ├── src/
+│   ├── vite.config.ts
+│   └── package.json
+├── electron/             # Electron wrapper
+│   ├── main.ts           # Main process
+│   ├── preload.ts        # Preload script
+│   └── electron-builder.yml
+├── scripts/
+│   ├── build-web.sh      # Build web distribution
+│   └── build-electron.sh # Build Electron distribution
+└── dist/
+    ├── trex              # Web binary (Go + embedded frontend)
+    └── trex-desktop/     # Electron app bundle
 ```
 
 ### Single Binary Distribution

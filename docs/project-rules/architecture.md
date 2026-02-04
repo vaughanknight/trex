@@ -1,7 +1,7 @@
 # trex Architecture
 
-**Version**: 1.0.0-draft
-**Status**: DRAFT - Pending constitution completion (Q16-Q20)
+**Version**: 1.0.0
+**Status**: RATIFIED
 **Last Updated**: 2026-02-04
 
 ---

@@ -1,7 +1,7 @@
 # trex Project Idioms
 
-**Version**: 1.0.0-draft
-**Status**: DRAFT - Pending constitution completion (Q16-Q20)
+**Version**: 1.0.0
+**Status**: RATIFIED
 **Last Updated**: 2026-02-04
 
 ---
@@ -22,11 +22,14 @@ This document contains recurring patterns, examples, and idiomatic approaches fo
 trex/
 ├── cmd/
 │   └── trex/              # Main application entry point
+│       └── main.go        # Entry point with startup diagnostics
 ├── internal/
 │   ├── api/               # REST API handlers
 │   ├── ws/                # WebSocket server
 │   ├── persistence/       # Data storage (favorites, groups, preferences)
-│   └── config/            # Configuration management
+│   ├── config/            # Configuration management
+│   ├── startup/           # Pre-flight checks and wizard
+│   └── telemetry/         # OpenTelemetry setup
 ├── pkg/                   # Public packages (if any)
 ├── frontend/              # Next.js application
 │   ├── app/               # Next.js app router
@@ -82,6 +85,66 @@ added new feature
 # Wrong format
 FEAT: Add feature
 feat - add feature
+```
+
+---
+
+## Startup Diagnostics Pattern
+
+### Example Startup Output (Success)
+
+```
+trex v1.0.0
+
+Startup checks:
+  ✓ tmux found at /usr/bin/tmux (v3.4)
+  ✓ tmux server accessible (5 sessions found)
+  ✓ Port 3000 available
+  ✓ Config directory writable (~/.config/trex/)
+  ✓ Data directory writable (~/.local/share/trex/)
+  ✓ OpenTelemetry initialized
+
+Starting server at http://localhost:3000
+```
+
+### Example Startup Output (Failure)
+
+```
+trex v1.0.0
+
+Startup checks:
+  ✗ tmux not found in PATH
+
+trex requires tmux to function. Please install tmux:
+  brew install tmux    # macOS
+  apt install tmux     # Ubuntu/Debian
+  pacman -S tmux       # Arch Linux
+```
+
+### Example First-Run Wizard
+
+```
+trex v1.0.0 - First Run Setup
+
+Welcome to trex! Let's get you set up.
+
+Step 1/3: Checking permissions
+  ✓ Can read tmux sessions
+  ✓ Can write to ~/.config/trex/
+  ✓ Can write to ~/.local/share/trex/
+
+Step 2/3: Project directories
+  Where do you keep your projects? (comma-separated paths)
+  > ~/projects, ~/work
+
+  ✓ Found 12 directories in ~/projects
+  ✓ Found 8 directories in ~/work
+
+Step 3/3: Preferences
+  Theme: [dark] / light
+  Terminal font: JetBrains Mono [14px]
+
+Setup complete! Starting trex...
 ```
 
 ---
@@ -263,6 +326,10 @@ GET    /api/groups            # List groups
 POST   /api/groups            # Create group
 PUT    /api/groups/:id        # Update group
 DELETE /api/groups/:id        # Delete group
+
+GET    /api/health            # Health check with metrics
+GET    /api/preferences       # Get preferences
+PUT    /api/preferences       # Update preferences
 ```
 
 ### WebSocket Message Format
@@ -342,6 +409,20 @@ feat(api): add session endpoint
 Closes #42
 ```
 
+**❌ Skipping startup checks**
+```go
+// BAD - Just start the server
+http.ListenAndServe(":3000", handler)
+```
+
+```go
+// GOOD - Run pre-flight checks first
+if err := startup.RunChecks(); err != nil {
+    log.Fatal(err)
+}
+http.ListenAndServe(":3000", handler)
+```
+
 ---
 
 ## Configuration Patterns
@@ -371,6 +452,69 @@ func CacheDir() string {
     }
     home, _ := os.UserHomeDir()
     return filepath.Join(home, ".cache", "trex")
+}
+```
+
+---
+
+## OpenTelemetry Logging Pattern
+
+```go
+import (
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
+)
+
+func (s *SessionService) List(ctx context.Context) ([]Session, error) {
+    tracer := otel.Tracer("trex")
+    ctx, span := tracer.Start(ctx, "SessionService.List")
+    defer span.End()
+
+    sessions, err := s.tmux.ListSessions()
+    if err != nil {
+        span.RecordError(err)
+        return nil, err
+    }
+
+    span.SetAttributes(
+        attribute.Int("session.count", len(sessions)),
+    )
+
+    return sessions, nil
+}
+```
+
+---
+
+## Self-Update Pattern
+
+```go
+func (c *UpdateCommand) Run() error {
+    // 1. Check for new version
+    latest, err := c.checkLatestVersion()
+    if err != nil {
+        return fmt.Errorf("failed to check for updates: %w", err)
+    }
+
+    if latest == c.currentVersion {
+        fmt.Println("trex is already up to date")
+        return nil
+    }
+
+    // 2. Download new binary
+    fmt.Printf("Downloading trex %s...\n", latest)
+    binary, err := c.downloadBinary(latest)
+    if err != nil {
+        return fmt.Errorf("failed to download: %w", err)
+    }
+
+    // 3. Replace current binary
+    if err := c.replaceBinary(binary); err != nil {
+        return fmt.Errorf("failed to update: %w", err)
+    }
+
+    fmt.Printf("Updated to trex %s\n", latest)
+    return nil
 }
 ```
 

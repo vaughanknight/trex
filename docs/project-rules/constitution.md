@@ -1,11 +1,20 @@
 # trex Project Constitution
 
-**Version**: 1.0.0-draft
-**Ratified**: TBD (In Progress - Interview Phase)
+**Version**: 1.0.0
+**Ratified**: 2026-02-04
 **Last Amended**: 2026-02-04
-**Status**: DRAFT - Interview in progress (Questions 1-15 completed, 16-20 pending)
+**Status**: RATIFIED
 
 ---
+
+<!--
+Sync Impact Report:
+- Mode: CREATE
+- Version: 1.0.0 (initial)
+- All 20 interview questions completed
+- Constitution fully populated
+- Supporting docs (rules, idioms, architecture) aligned
+-->
 
 <!-- USER CONTENT START -->
 <!-- This section preserves user customizations across constitution updates -->
@@ -239,6 +248,70 @@ trex is a **UI layer**, not an agent integration layer.
 
 ---
 
+## Distribution
+
+### Installation Method: Single Binary
+
+- Go binary embeds Next.js static build
+- One download, one file, works everywhere
+- No separate frontend/backend packages
+
+**Future considerations**:
+- Docker image (eventually)
+- Package managers (brew, apt) - maybe in future
+
+### Update Mechanism: Self-Update
+
+- `trex update` command for in-place updates
+- No manual downloads after initial install
+- No package manager dependency
+
+### First-Run Experience: Guided Setup Wizard
+
+- Interactive wizard on first run
+- Permission checks with clear messaging ("trex needs access to X, Y, Z")
+- Folder configuration (project directories)
+- Validation tests with user guidance
+- Creates necessary config automatically
+- No config file required upfront (wizard generates it)
+
+---
+
+## Observability
+
+### Logging
+
+- **Levels**: debug, info, warn, error
+- **Format**: Structured JSON
+- **Transport**: OpenTelemetry
+- **Routing**: Configurable (stdout, file, external collectors)
+
+### Metrics
+
+- **Endpoint**: Health check endpoint with metrics
+- **Internal metrics**: latency, connection count, memory usage
+- **trex-specific**: current active sessions, total session count
+- **Compatible with**: OpenTelemetry
+
+### Error Tracking
+
+- **Crash reporting**: Opt-in telemetry
+- **Transport**: Via OpenTelemetry (not external services like Sentry)
+- **Privacy**: Respects user preferences
+
+### Startup Diagnostics: Fail-Fast
+
+Pre-flight checks before starting server:
+- tmux available in PATH
+- tmux server accessible
+- Port not already in use
+- XDG directories writable
+- tmax library functional
+
+**Behavior**: Won't start if critical dependencies missing; clear console messages explaining what failed and why.
+
+---
+
 ## Quality & Verification Strategy
 
 ### Testing Philosophy
@@ -307,7 +380,7 @@ Promoted tests require Test Doc blocks with 5 fields:
 |------|-------------|
 | **Tests** | All pass (unit + integration suites) |
 | **Coverage** | 80%+ minimum |
-| **Linting** | Go: gofmt + linter (TBD); JS: ESLint + Prettier |
+| **Linting** | Go: gofmt + linter; JS: ESLint + Prettier |
 | **Type checking** | TypeScript strict mode - no errors |
 | **Security** | Dependency vulnerability scans pass |
 | **Build** | Go binary + Next.js production build succeeds |
@@ -437,22 +510,63 @@ Promoted tests require Test Doc blocks with 5 fields:
 
 ## Governance
 
-**TODO**: Questions 19-20 will define:
-- Contribution model
-- Constitution amendment process
+### Project Status
+
+- **Single maintainer** project currently
+- May extend to community as project matures
+
+### Contribution Model
+
+**External Contributors**:
+- Open to contributions (MIT license, public repo)
+- No CLA required
+- Code of Conduct: Contributor Covenant
+
+**Approval Process**:
+- Maintainer-only merge
+- Issues required before PRs (discuss before building)
+- Feature proposals for CS ≥ 3
+- Small fixes/typos: PR welcome without prior issue
+
+**Communication**:
+- GitHub Issues only
+- Discussions tab for questions/ideas
+
+**Expectations**:
+- Response times may be slow (single maintainer)
+- Not all contributions will be accepted
+- Alignment with project vision matters
+
+### Constitution Evolution
+
+**Amendment Process**:
+- Anyone can propose changes (via GitHub issues)
+- Maintainer decision on approval
+- Maintainer decides change level (constitution vs rules)
+
+**Review Cadence**:
+- As-needed (no scheduled reviews)
+- Triggered by issues, friction, or learnings
+
+**Versioning**:
+- Semantic versioning for constitution
+  - MAJOR: Breaking changes to principles or governance
+  - MINOR: New sections, expanded guidance
+  - PATCH: Clarifications, typo fixes
+- Changelog maintained for doctrine changes
 
 ---
 
-## Outstanding Questions
+## Changelog
 
-The following areas require completion through continued interview (Q16-Q20):
+### v1.0.0 (2026-02-04)
 
-- **Distribution** (Q16): Installation method, updates, deployment options
-- **Observability** (Q17): Logging, metrics, error tracking
-- **Contribution Model** (Q18): External contributors, approval process
-- **Constitution Evolution** (Q19): Amendment process, review cadence
-- **Final Review** (Q20): Any remaining items
-
----
-
-**Next Steps**: Resume interview at Question 16 to complete constitution.
+- Initial constitution ratified
+- All 20 interview questions completed
+- Core principles established: DevEx paramount, simplicity, security, amazing UX
+- Technology stack defined: Go backend + Next.js/React frontend
+- Architecture documented: trex (UI) ↔ tmax (library) ↔ tmux
+- Quality strategy: TDD, fakes-only, 80%+ coverage
+- Distribution: Single binary with self-update and setup wizard
+- Observability: OpenTelemetry, fail-fast startup diagnostics
+- Governance: Single maintainer, as-needed reviews

@@ -1,7 +1,7 @@
 # trex Project Rules
 
-**Version**: 1.0.0-draft
-**Status**: DRAFT - Pending constitution completion (Q16-Q20)
+**Version**: 1.0.0
+**Status**: RATIFIED
 **Last Updated**: 2026-02-04
 
 ---
@@ -36,6 +36,7 @@ This document contains enforceable MUST/SHOULD statements derived from the [Cons
 - PRs SHOULD be small and focused
 - PRs MUST use squash merge to main
 - PRs MUST have at least 1 approving review
+- PRs MUST use the PR template
 
 ---
 
@@ -58,6 +59,7 @@ This document contains enforceable MUST/SHOULD statements derived from the [Cons
 - Unit tests MUST use fakes (fake tmux, fake filesystem, fake WebSocket)
 - Integration tests MUST use real dependencies (real tmux, real filesystem)
 - Real dependencies SHOULD be used where practical
+- tmax library MAY provide tmux fakes - MUST NOT duplicate
 
 ### Test Organization
 
@@ -155,6 +157,55 @@ Promoted tests MUST include Test Doc blocks with 5 fields:
 
 ---
 
+## Distribution Rules
+
+### Installation
+
+- trex MUST be distributed as a single binary
+- Go binary MUST embed Next.js static build
+- Separate frontend/backend packages MUST NOT be required
+
+### Updates
+
+- `trex update` command MUST be provided for self-updates
+- Manual downloads SHOULD NOT be required after initial install
+
+### First-Run
+
+- First-run wizard MUST guide user through setup
+- Permission checks MUST be performed with clear messaging
+- Config file MUST be generated automatically (not required upfront)
+
+---
+
+## Observability Rules
+
+### Logging
+
+- Logging MUST use OpenTelemetry
+- Log format MUST be structured JSON
+- Standard log levels MUST be supported (debug, info, warn, error)
+
+### Metrics
+
+- Health check endpoint MUST be exposed
+- Session count metrics MUST be tracked
+- Latency and memory metrics SHOULD be available
+
+### Startup Diagnostics
+
+- Pre-flight checks MUST run before server starts
+- trex MUST fail to start if critical dependencies are missing
+- Failure messages MUST clearly explain what's wrong and how to fix it
+
+**Required startup checks**:
+- tmux available in PATH
+- tmux server accessible
+- Port not already in use
+- XDG directories writable
+
+---
+
 ## Complexity Estimation Rules
 
 ### CS 1-5 System
@@ -224,9 +275,20 @@ For Large (CS-4) or Epic (CS-5) work:
 
 ---
 
-## Governance
+## Governance Rules
 
-**TODO**: Complete after Q19-Q20
+### Contributions
+
+- Issues MUST be created before PRs (except small fixes/typos)
+- Feature proposals MUST be discussed for CS ≥ 3 work
+- Maintainer approval MUST be obtained before merge
+
+### Constitution Changes
+
+- Anyone MAY propose changes via GitHub issues
+- Maintainer MUST approve all changes
+- Semantic versioning MUST be used for constitution versions
+- Changelog MUST be updated for all doctrine changes
 
 ---
 

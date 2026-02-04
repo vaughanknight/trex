@@ -3,7 +3,7 @@
 **Version**: 1.0.0-draft
 **Ratified**: TBD (In Progress - Interview Phase)
 **Last Amended**: 2026-02-04
-**Status**: DRAFT - Interview in progress (Questions 1-6 completed, 7-20 pending)
+**Status**: DRAFT - Interview in progress (Questions 1-15 completed, 16-20 pending)
 
 ---
 
@@ -99,7 +99,7 @@ These principles are **non-negotiable** and guide every design and implementatio
 
 **trex (downstream consumer)**:
 - Role: Web UI and HTTP/WebSocket server
-- Responsibility: Browser interface, terminal rendering, user preferences, bookmarks
+- Responsibility: Browser interface, terminal rendering, user preferences, favorites
 - Import Strategy: Uses tmax library via Go modules with semantic versioning
 
 **Development Workflow**:
@@ -108,6 +108,22 @@ These principles are **non-negotiable** and guide every design and implementatio
 3. trex updates Go module import → Consumes new functionality
 
 **Boundary Rule**: trex does NOT implement tmux integration directly - that's tmax's responsibility.
+
+### Agent Integration Philosophy
+
+trex is a **UI layer**, not an agent integration layer.
+
+**What trex sees**: tmux sessions (agnostic to what's running inside)
+- Claude Code, Copilot CLI, Aider, plain bash - all just tmux sessions to trex
+- No special detection or treatment needed
+
+**Responsibility split**:
+- **trex**: Browser UI, visual organization, favorites, session preview, user preferences
+- **tmax**: Under-the-hood tmux management, any future agent detection, session operations
+
+**Extension model**: Deferred to tmax
+- If plugin/agent detection is ever needed, tmax will provide it
+- trex consumes whatever tmax exposes
 
 ---
 
@@ -139,8 +155,9 @@ These principles are **non-negotiable** and guide every design and implementatio
 - **Rationale**: v1 focuses on personal developer workflow
 - **Future**: Multi-tenant requires authentication, isolation, resource limits
 
-**Session Persistence**: Sessions survive reboots
-- **Implementation**: tmux handles session persistence; trex rediscovers on restart
+**Session Persistence**: tmux handles persistence; trex rediscovers
+- **Implementation**: trex continuously discovers available tmux sessions
+- **Reboot behavior**: tmux sessions may or may not survive (depends on host); trex rediscovers whatever is available
 
 ### Reliability (v1)
 
@@ -148,29 +165,273 @@ These principles are **non-negotiable** and guide every design and implementatio
 - **Guarantee**: trex crashes do not affect tmux sessions
 - **Recovery**: trex rediscovers all existing tmux sessions on restart
 
-**Data Persistence** (TODO - Future Exploration):
-- Session configs (bookmarks, custom names, groupings)
-- History (recent sessions, command history)
-- UI state (themes, layouts, preferences)
-- **Action**: Design persistence layer in future planning phase
+---
+
+## User Experience
+
+### Interaction Model: Rich
+
+- **Alt-tab style session preview**: See all sessions at a glance
+- **Project-scoped view**: Sessions filtered by project/group
+- **Global view**: ALL sessions across all projects
+- **Quick selection**: Visual previews enable fast context switching
+
+### Input Modality: Keyboard-First, Mouse-Friendly
+
+**Keyboard (power users)**:
+- tmux-like shortcuts (e.g., `Ctrl-B s` equivalent shows all sessions in rich UI)
+- Command palette for quick actions
+- Vim-style navigation where appropriate
+
+**Mouse (fully supported)**:
+- Click to select sessions
+- Drag to organize/group
+- Hover for previews
+- Full functionality without keyboard
+
+### Customization: Sensible Defaults + Power-User Depth
+
+**Out of the box**: Works great with zero configuration
+**Available customization**:
+- Themes (terminal and UI)
+- Fonts (terminal rendering)
+- Layouts (panel arrangements)
+- Keybindings (custom shortcuts)
+
+**Philosophy**: "Simple by default, powerful when needed"
+
+---
+
+## Data Persistence
+
+### Storage Location
+
+**XDG-compliant paths**:
+- Config: `~/.config/trex/`
+- Data: `~/.local/share/trex/`
+- Cache: `~/.cache/trex/`
+
+**Format**: JSON
+
+### What Gets Persisted
+
+| Data | Description |
+|------|-------------|
+| **Favorites** | User-marked favorite sessions |
+| **Projects/Groups** | User-defined session groupings (sessions can belong to multiple groups) |
+| **UI Preferences** | Theme, layout, fonts, keybindings |
+| **Session History** | Recently accessed sessions |
+| **Custom Names/Labels** | User-defined names; also honors terminal title escape sequences |
+
+### Reconnection Behavior
+
+| Event | Behavior |
+|-------|----------|
+| **Browser refresh** | Restore UI state; terminals show live current state |
+| **trex restart** | Rediscover sessions, restore favorites/groups/preferences |
+| **Machine reboot** | tmux sessions may/may not survive; trex rediscovers available |
+
+**Key Principle**: trex doesn't persist tmux sessions - it continuously discovers what's available. Persistence is for trex's own UI state, favorites, and preferences.
+
+**Terminology**:
+- "Bookmarks" = browser bookmarks (URL)
+- "Favorites" = trex's starred sessions
 
 ---
 
 ## Quality & Verification Strategy
 
-**TODO**: Questions 7-9 will define:
-- Testing approach (TDD policy, test types, coverage)
-- Scratch → promote workflow for trex
-- Quality gates and CI requirements
+### Testing Philosophy
+
+**Test-Driven Development**: Strict TDD
+- Test-first for everything where possible
+- Write tests before implementation as standard practice
+- Red-Green-Refactor cycles
+
+**Mock Policy**: FAKES ONLY
+- **No mocks** - use fakes everywhere
+- Never ask about mocks - fakes are the policy
+- This is non-negotiable
+
+**Fake vs Real Strategy**:
+- **Unit tests**: Use fakes (fake tmux, fake filesystem, fake WebSocket)
+- **Integration tests**: Use real dependencies (real tmux, real filesystem)
+- **Principle**: Use real dependencies where practical; fake only when impractical
+- **Note**: tmax library may provide tmux fakes - don't duplicate
+
+### Test Organization
+
+Tests organized into **suites** for different execution stages:
+- Fast local feedback (unit tests)
+- Pre-commit checks (unit + fast integration)
+- Full CI validation (all suites)
+
+**Both unit AND integration tests are REQUIRED** - not either/or.
+
+### Coverage Targets
+
+- **Minimum**: 80% line coverage overall
+- **Critical components**: Higher coverage required
+  - Session management
+  - WebSocket reliability
+  - Data persistence
+  - Terminal I/O
+
+### Scratch → Promote Workflow
+
+- Use `tests/scratch/` for exploration and TDD iteration
+- **Promote working tests immediately** - don't leave them in scratch
+- Philosophy: "More tests better as always"
+- Scratch is for fast iteration, not permanent residence
+
+### Test Documentation (TAD)
+
+Promoted tests require Test Doc blocks with 5 fields:
+
+```go
+// Test Doc:
+// - Why: <business/bug/regression reason>
+// - Contract: <what invariant this asserts>
+// - Usage Notes: <how to call, gotchas>
+// - Quality Contribution: <what failures it catches>
+// - Worked Example: <inputs/outputs summary>
+```
+
+---
+
+## Quality Gates
+
+### Automated CI Gates (all required)
+
+| Gate | Requirement |
+|------|-------------|
+| **Tests** | All pass (unit + integration suites) |
+| **Coverage** | 80%+ minimum |
+| **Linting** | Go: gofmt + linter (TBD); JS: ESLint + Prettier |
+| **Type checking** | TypeScript strict mode - no errors |
+| **Security** | Dependency vulnerability scans pass |
+| **Build** | Go binary + Next.js production build succeeds |
+
+### Manual Gates
+
+- **Code review**: 1 approver minimum required
+- No specific role requirements (any team member can approve)
+
+### Performance/Documentation Gates
+
+- **Performance benchmarks**: Latency thresholds (to be documented)
+- **Documentation**: Always required - update docs with code changes
 
 ---
 
 ## Delivery Practices
 
-**TODO**: Questions 10-12 will define:
-- Branching and commit strategy
-- Complexity estimation (CS 1-5 system)
-- Documentation requirements
+### Branching Model: GitHub Flow
+
+- Feature branches created from `main`
+- Short-lived branches, merge back to `main` via PR
+- No long-lived develop/release branches
+
+### Commit Conventions: Conventional Commits
+
+**Format**: `type(scope): description`
+
+**Types**: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`
+
+**Scopes**: `backend`, `frontend`, `api`, `ui`, `ws`, `config`, etc.
+
+### Merge Strategy
+
+- **Squash merges** to main (clean history)
+- Full commit history preserved in PR for context
+
+### PR Requirements
+
+- ✅ Small, focused PRs preferred
+- ✅ Linked issues **required** (no orphan PRs)
+- ✅ Issues auto-generated at start of planning phases if missing
+- ✅ PR template required (see `.github/pull_request_template.md`)
+
+---
+
+## Complexity Estimation
+
+### CS 1-5 System (Strictly Adopted)
+
+**Prohibition**: Never output or imply time estimates in any form.
+
+**6 Factors** (0-2 points each):
+
+| Factor | 0 | 1 | 2 |
+|--------|---|---|---|
+| **S**urface Area | One file | Multiple files | Many files/cross-cutting |
+| **I**ntegration Breadth | Internal only | One external | Multiple externals |
+| **D**ata & State | None | Minor tweaks | Non-trivial migration |
+| **N**ovelty & Ambiguity | Well-specified | Some ambiguity | Significant discovery |
+| **F**unctional Constraints | Standard | Moderate | Strict/critical |
+| **T**esting & Rollout | Unit only | Integration/e2e | Flags/staged rollout |
+
+**Score Mapping**:
+- **CS-1** (0-2): Trivial
+- **CS-2** (3-4): Small
+- **CS-3** (5-7): Medium
+- **CS-4** (8-9): Large
+- **CS-5** (10-12): Epic
+
+### CS ≥ 4 Requirements (Mandatory)
+
+- ✅ Feature flags for staged rollout
+- ✅ Rollback plan documented
+- ✅ ADR for architectural decisions
+
+---
+
+## Documentation Standards
+
+### Inline Documentation
+
+**Go Backend**:
+- Exported functions/types: godoc-style comments required
+- Internal functions: Comment only when non-obvious (explain WHY)
+
+**TypeScript Frontend**:
+- Exported functions/components: JSDoc required
+- Complex props: Document with JSDoc or inline comments
+
+**Rule**: "If you need to re-read the code twice to understand it, add a comment."
+
+### Project Documentation
+
+| Document | When Required |
+|----------|---------------|
+| **README.md** | Update when user-facing behavior changes |
+| **ADRs** | Significant architectural decisions |
+| **API Docs (REST)** | All endpoints (OpenAPI 3.0) |
+| **API Docs (WebSocket)** | Protocol spec |
+| **CHANGELOG.md** | Every release |
+
+---
+
+## Dependency Policy
+
+### Evaluation Criteria
+
+- **Maturity**: Cutting-edge requires extra scrutiny; stable gets lighter review
+- **Maintenance signals**: Check activity, responsiveness, maintainer count
+- **License**: MIT preferred
+- **Bundle size**: Keep frontend lean
+- **Security**: Check for known vulnerabilities
+
+### Dependency Hygiene
+
+- **Update cadence**: Monthly minimum, with scripts to check
+- **Vulnerability scanning**: Dependabot + `npm audit` / `govulncheck`
+- **Lock files**: Always commit (`go.sum`, `package-lock.json`)
+
+### Philosophy
+
+- Prefer **fewer, well-chosen** dependencies
+- **Leverage first, don't rebuild** - use existing libraries
 
 ---
 
@@ -184,23 +445,14 @@ These principles are **non-negotiable** and guide every design and implementatio
 
 ## Outstanding Questions
 
-The following areas require completion through continued interview (Q7-Q20):
+The following areas require completion through continued interview (Q16-Q20):
 
-- **Testing Philosophy** (Q7): TDD approach, test balance, coverage targets
-- **Scratch → Promote Workflow** (Q8): Test exploration and promotion criteria
-- **Quality Gates** (Q9): CI checks, review requirements, merge criteria
-- **Branching Strategy** (Q10): Git workflow, commit conventions, PR standards
-- **Complexity Estimation** (Q11): CS 1-5 application for trex
-- **Documentation Standards** (Q12): Comment policy, README, ADRs, API docs
-- **Dependency Policy** (Q13): External library evaluation criteria
-- **Agent Integration** (Q14): Claude Code compatibility, plugin model
-- **UX Priorities** (Q15): Speed vs features, keyboard vs mouse, customization
-- **State Management** (Q16): Persistence location, reconnection, multi-device
-- **Distribution** (Q17): Installation method, updates, deployment options
-- **Observability** (Q18): Logging, metrics, error tracking
-- **Contribution Model** (Q19): External contributors, approval process
-- **Constitution Evolution** (Q20): Amendment process, review cadence
+- **Distribution** (Q16): Installation method, updates, deployment options
+- **Observability** (Q17): Logging, metrics, error tracking
+- **Contribution Model** (Q18): External contributors, approval process
+- **Constitution Evolution** (Q19): Amendment process, review cadence
+- **Final Review** (Q20): Any remaining items
 
 ---
 
-**Next Steps**: Resume interview at Question 7 to complete constitution.
+**Next Steps**: Resume interview at Question 16 to complete constitution.

@@ -1,0 +1,68 @@
+name: Build
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  build-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build web binary
+        run: make build-web
+
+      - name: Test Go
+        run: |
+          cd backend
+          go test ./...
+
+      - name: Lint frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run lint
+
+      - name: Upload web binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: trex-web
+          path: dist/trex
+
+  build-electron:
+    runs-on: macos-latest
+    needs: build-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Electron app
+        run: make build-electron
+
+      - name: Upload Electron app
+        uses: actions/upload-artifact@v4
+        with:
+          name: trex-desktop-macos
+          path: electron/release/*.dmg

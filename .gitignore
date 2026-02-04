@@ -1,0 +1,39 @@
+# Build outputs
+dist/
+
+# Frontend build artifacts
+frontend/dist/
+frontend/node_modules/
+
+# Backend embedded frontend (copied during build)
+backend/internal/static/dist/
+
+# Electron build artifacts
+electron/dist/
+electron/release/
+electron/node_modules/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+*.cover
+*.out
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*

@@ -34,5 +34,14 @@ directories:
       - "ADR"
       - "decision rationale"
 
+  - path: "plans/"
+    summary: "Feature plans, specifications, and implementation tracking"
+    triggers:
+      - "feature plan"
+      - "specification"
+      - "what are we building"
+      - "implementation plan"
+      - "backlog"
+
 files: []
 # No files at root level currently

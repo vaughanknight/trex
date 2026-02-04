@@ -1,0 +1,17 @@
+appId: com.trex.desktop
+productName: trex
+directories:
+  buildResources: build
+  output: release
+files:
+  - dist/**/*
+extraResources:
+  - from: ../dist/trex
+    to: trex
+mac:
+  category: public.app-category.developer-tools
+  identity: null
+  target:
+    - target: dir
+      arch:
+        - arm64

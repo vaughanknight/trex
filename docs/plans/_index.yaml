@@ -1,0 +1,29 @@
+# plans/_index.yaml - Agent navigation manifest
+# PURPOSE: Feature planning documents and specifications
+
+purpose: "Feature plans, specifications, and implementation tracking"
+
+triggers:
+  - "feature plan"
+  - "specification"
+  - "what are we building"
+  - "implementation plan"
+  - "backlog"
+  - "work items"
+
+directories:
+  - path: "001-hello-world-baseline/"
+    summary: "Minimal scaffolding to prove build pipeline works (Go + Vite + Electron)"
+    keywords: [baseline, hello-world, scaffolding, build, setup]
+    status: planned
+    complexity: CS-2
+    issue: 13
+
+files:
+  - path: "001-hello-world-baseline/hello-world-baseline-spec.md"
+    summary: "Feature specification with goals, acceptance criteria, clarifications"
+    keywords: [spec, requirements, acceptance-criteria]
+
+  - path: "001-hello-world-baseline/hello-world-baseline-plan.md"
+    summary: "Implementation plan with 25 tasks, research findings, task dependencies"
+    keywords: [plan, tasks, implementation, research]

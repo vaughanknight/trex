@@ -30,6 +30,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // routes sets up all HTTP routes
 func (s *Server) routes() {
 	s.mux.HandleFunc("/api/health", s.handleHealth())
+	s.mux.HandleFunc("/ws", s.handleTerminal())
 	// Serve embedded frontend files at root
 	s.mux.Handle("/", static.Handler())
 }

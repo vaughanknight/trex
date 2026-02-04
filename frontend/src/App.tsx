@@ -1,11 +1,16 @@
 import './App.css'
 import { Terminal } from './components/Terminal'
+import { SidebarProvider, SidebarInset } from './components/ui/sidebar'
+import { SessionSidebar } from './components/SessionSidebar'
 
 function App() {
   return (
-    <div className="app">
-      <Terminal />
-    </div>
+    <SidebarProvider defaultOpen={false}>
+      <SessionSidebar />
+      <SidebarInset className="app">
+        <Terminal />
+      </SidebarInset>
+    </SidebarProvider>
   )
 }
 

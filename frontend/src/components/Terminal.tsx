@@ -5,9 +5,6 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { useTerminalSocket } from '../hooks/useTerminalSocket'
 
-// Debounce timer for resize events
-let resizeTimeout: ReturnType<typeof setTimeout> | null = null
-
 /**
  * Terminal component that renders an xterm.js terminal connected to the backend.
  */
@@ -18,6 +15,8 @@ export function Terminal() {
   const sendResizeRef = useRef<((cols: number, rows: number) => void) | null>(
     null
   )
+  // Per-instance debounce timer for resize events (moved from module-level to fix multi-instance bug)
+  const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Handle terminal output
   const onOutput = useCallback((data: string) => {
@@ -87,12 +86,12 @@ export function Terminal() {
     // Initial fit
     fitAddon.fit()
 
-    // Handle resize with debounce
+    // Handle resize with debounce (uses per-instance ref to avoid multi-terminal conflicts)
     const handleResize = () => {
-      if (resizeTimeout) {
-        clearTimeout(resizeTimeout)
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current)
       }
-      resizeTimeout = setTimeout(() => {
+      resizeTimeoutRef.current = setTimeout(() => {
         if (fitAddonRef.current && xtermRef.current) {
           fitAddonRef.current.fit()
           const { cols, rows } = xtermRef.current
@@ -109,8 +108,8 @@ export function Terminal() {
     // Cleanup
     return () => {
       window.removeEventListener('resize', handleResize)
-      if (resizeTimeout) {
-        clearTimeout(resizeTimeout)
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current)
       }
       terminal.dispose()
     }

@@ -10,6 +10,7 @@ export type ServerMessageType = 'output' | 'error' | 'exit'
 
 /** Message sent from browser to server */
 export interface ClientMessage {
+  sessionId?: string // Session ID for multi-session routing
   type: ClientMessageType
   data?: string // For input messages
   cols?: number // For resize messages
@@ -18,6 +19,8 @@ export interface ClientMessage {
 
 /** Message sent from server to browser */
 export interface ServerMessage {
+  sessionId?: string // Session ID for multi-session routing
+  shellType?: string // Shell type (e.g., "bash", "zsh") for session naming
   type: ServerMessageType
   data?: string // For output messages
   error?: string // For error messages

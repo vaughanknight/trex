@@ -1,0 +1,90 @@
+# adr/_index.yaml - Agent navigation manifest
+# PURPOSE: Architecture Decision Records index
+
+purpose: "ADRs documenting significant architectural decisions with rationale"
+
+triggers:
+  - "why did we choose"
+  - "decision rationale"
+  - "alternatives considered"
+  - "ADR"
+  - "architectural decision"
+  - "technology choice"
+
+# Quick lookup: ADR by topic
+topic_index:
+  backend: "0001"
+  go: "0001"
+  tmax: "0001"
+  tmux: "0001"
+  frontend: "0002"
+  vite: "0002"
+  react: "0002"
+  nextjs: "0002"
+  electron: "0003"
+  distribution: "0003"
+  web: "0003"
+  desktop: "0003"
+  testing: "0004"
+  mocks: "0004"
+  fakes: "0004"
+  tdd: "0004"
+  observability: "0005"
+  logging: "0005"
+  metrics: "0005"
+  opentelemetry: "0005"
+  otel: "0005"
+  configuration: "0006"
+  xdg: "0006"
+  storage: "0006"
+  paths: "0006"
+  documentation: "0007"
+  navigation: "0007"
+  agent: "0007"
+  index: "0007"
+
+files:
+  - path: "template.md"
+    summary: "Template for new ADRs with YAML front matter schema"
+    keywords: [template, new-adr, schema]
+
+  - path: "0001-go-backend-with-tmax-library.md"
+    summary: "Go backend using tmax library for tmux integration"
+    keywords: [go, backend, tmax, tmux, api]
+    complexity: CS-4
+
+  - path: "0002-vite-react-over-nextjs.md"
+    summary: "Vite + React chosen over Next.js for frontend"
+    keywords: [vite, react, nextjs, frontend, spa]
+    complexity: CS-3
+
+  - path: "0003-dual-distribution-web-and-electron.md"
+    summary: "Both web and Electron distribution in v1"
+    keywords: [electron, web, distribution, desktop, browser]
+    complexity: CS-4
+
+  - path: "0004-fakes-only-testing-no-mocks.md"
+    summary: "Fakes-only policy, mocks prohibited"
+    keywords: [testing, fakes, mocks, tdd, test-doubles]
+    complexity: CS-2
+
+  - path: "0005-opentelemetry-for-observability.md"
+    summary: "OpenTelemetry for logging, metrics, tracing"
+    keywords: [opentelemetry, otel, logging, metrics, tracing, observability]
+    complexity: CS-2
+
+  - path: "0006-xdg-compliant-configuration.md"
+    summary: "XDG Base Directory spec for config/data/cache paths"
+    keywords: [xdg, configuration, paths, storage, dotfiles]
+    complexity: CS-1
+
+  - path: "0007-agent-navigable-documentation.md"
+    summary: "YAML indexes for LLM agent documentation navigation"
+    keywords: [agent, llm, navigation, index, documentation]
+    complexity: CS-1
+
+  - path: "README.md"
+    summary: "Human-readable ADR index and status definitions"
+    keywords: [index, status, readme]
+
+directories: []

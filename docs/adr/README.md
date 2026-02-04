@@ -20,6 +20,7 @@ An ADR documents a significant architectural decision, including:
 | [ADR-0004](./0004-fakes-only-testing-no-mocks.md) | Fakes-only testing (no mocks) | Accepted | 2026-02-04 | CS-2 |
 | [ADR-0005](./0005-opentelemetry-for-observability.md) | OpenTelemetry for observability | Accepted | 2026-02-04 | CS-2 |
 | [ADR-0006](./0006-xdg-compliant-configuration.md) | XDG-compliant configuration | Accepted | 2026-02-04 | CS-1 |
+| [ADR-0007](./0007-agent-navigable-documentation.md) | Agent-navigable documentation | Accepted | 2026-02-04 | CS-1 |
 
 ## Status Definitions
 

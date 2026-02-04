@@ -1,0 +1,37 @@
+# project-rules/_index.yaml - Agent navigation manifest
+# PURPOSE: Governance and standards documentation for trex
+
+purpose: "Project governance: constitution, enforceable rules, architecture, code patterns"
+
+triggers:
+  - "coding standards"
+  - "project rules"
+  - "how should I write code"
+  - "testing policy"
+  - "mock policy"
+  - "fakes vs mocks"
+  - "commit conventions"
+  - "PR requirements"
+  - "technology stack"
+  - "architecture overview"
+  - "code patterns"
+  - "idioms"
+
+files:
+  - path: "constitution.md"
+    summary: "Core project values, stack decisions, testing philosophy - the WHY"
+    keywords: [values, stack, tdd, testing, distribution, governance, philosophy]
+
+  - path: "rules.md"
+    summary: "Enforceable MUST/SHOULD statements - the WHAT (compliance checks)"
+    keywords: [must, should, requirements, compliance, mocks, fakes, coverage, ci]
+
+  - path: "architecture.md"
+    summary: "System diagrams, component relationships, project structure"
+    keywords: [diagrams, structure, components, backend, frontend, electron, folders]
+
+  - path: "idioms.md"
+    summary: "Code patterns, examples, complexity scoring - the HOW"
+    keywords: [patterns, examples, code, complexity, cs-1, cs-5, error-handling]
+
+directories: []

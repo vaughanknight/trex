@@ -1,0 +1,38 @@
+# docs/_index.yaml - Agent navigation manifest
+# PURPOSE: Help LLM agents navigate trex documentation efficiently
+# USAGE: Read this file FIRST when searching for documentation
+
+purpose: "Root documentation for trex - tmux session management UI"
+
+triggers:
+  - "project documentation"
+  - "how does trex work"
+  - "architecture overview"
+  - "coding standards"
+  - "project rules"
+  - "decision records"
+
+directories:
+  - path: "project-rules/"
+    summary: "Governance docs: constitution, rules, architecture, idioms"
+    triggers:
+      - "coding standards"
+      - "project conventions"
+      - "how should I implement"
+      - "testing requirements"
+      - "what stack does trex use"
+      - "architectural decisions"
+      - "mock policy"
+      - "TDD requirements"
+
+  - path: "adr/"
+    summary: "Architecture Decision Records - why we chose X over Y"
+    triggers:
+      - "why did we choose"
+      - "what alternatives were considered"
+      - "technology decisions"
+      - "ADR"
+      - "decision rationale"
+
+files: []
+# No files at root level currently

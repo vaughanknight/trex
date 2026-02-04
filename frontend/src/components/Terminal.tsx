@@ -4,6 +4,9 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { useTerminalSocket } from '../hooks/useTerminalSocket'
+import { useTerminalTheme, getTerminalOptions } from '../hooks/useTerminalTheme'
+import { useSettingsStore, selectTheme } from '../stores/settings'
+import { getThemeById } from '../themes'
 
 /**
  * Terminal component that renders an xterm.js terminal connected to the backend.
@@ -49,18 +52,13 @@ export function Terminal() {
   useEffect(() => {
     if (!containerRef.current) return
 
-    // Create terminal
+    // Get initial settings from store (applied immediately to avoid flash)
+    const initialOptions = getTerminalOptions()
+
+    // Create terminal with persisted settings
     const terminal = new XTerm({
       cursorBlink: true,
-      fontSize: 14,
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      theme: {
-        background: '#1e1e1e',
-        foreground: '#d4d4d4',
-        cursor: '#d4d4d4',
-        cursorAccent: '#1e1e1e',
-        selectionBackground: '#264f78',
-      },
+      ...initialOptions,
     })
     xtermRef.current = terminal
 
@@ -115,6 +113,12 @@ export function Terminal() {
     }
   }, [])
 
+  // Apply theme/font/size changes from settings store
+  useTerminalTheme(xtermRef.current)
+
+  // Update background color to match theme
+  const theme = useSettingsStore(selectTheme)
+
   // Wire up terminal input when connected
   useEffect(() => {
     if (!xtermRef.current) return
@@ -151,13 +155,16 @@ export function Terminal() {
     }
   }, [connectionState])
 
+  // Get background color from current theme
+  const currentTheme = getThemeById(theme)
+
   return (
     <div
       ref={containerRef}
       style={{
         width: '100%',
         height: '100%',
-        backgroundColor: '#1e1e1e',
+        backgroundColor: currentTheme.background,
       }}
     />
   )

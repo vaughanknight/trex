@@ -26,11 +26,14 @@ import {
 } from '@/components/ui/sidebar'
 import { SessionList } from './SessionList'
 import { NewSessionButton } from './NewSessionButton'
-import { useUIStore, selectSidebarPinned } from '@/stores/ui'
+import { useUIStore, selectSidebarPinned, selectSettingsPanelOpen } from '@/stores/ui'
+import { SettingsPanel } from './SettingsPanel'
 
 function SettingsButton() {
+  const openSettings = useUIStore(state => state.openSettingsPanel)
+
   return (
-    <SidebarMenuButton tooltip="Settings">
+    <SidebarMenuButton onClick={openSettings} tooltip="Settings">
       <Settings className="size-4" />
       <span>Settings</span>
     </SidebarMenuButton>
@@ -89,34 +92,47 @@ function SidebarWithHover({ children }: { children: React.ReactNode }) {
 }
 
 export function SessionSidebar() {
+  const settingsPanelOpen = useUIStore(selectSettingsPanelOpen)
+  const closeSettings = useUIStore(state => state.closeSettingsPanel)
+
   return (
-    <Sidebar variant="floating" collapsible="icon">
-      <SidebarWithHover>
-        <SidebarHeader>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <NewSessionButton />
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarHeader>
+    <>
+      <Sidebar variant="floating" collapsible="icon">
+        <SidebarWithHover>
+          <SidebarHeader>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <NewSessionButton />
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarHeader>
 
-        <SidebarContent>
-          <SessionList />
-        </SidebarContent>
+          <SidebarContent>
+            <SessionList />
+          </SidebarContent>
 
-        <SidebarFooter>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <PinButton />
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SettingsButton />
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
+          <SidebarFooter>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <PinButton />
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SettingsButton />
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarFooter>
 
-        <SidebarRail />
-      </SidebarWithHover>
-    </Sidebar>
+          <SidebarRail />
+        </SidebarWithHover>
+      </Sidebar>
+
+      {/* Settings Panel */}
+      <SettingsPanel
+        open={settingsPanelOpen}
+        onOpenChange={(open) => {
+          if (!open) closeSettings()
+        }}
+      />
+    </>
   )
 }

@@ -11,14 +11,14 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { FakeStorage } from '@/test/fakeStorage'
-import type { SettingsState, SettingsActions, Theme } from '../settings'
+import type { SettingsState, SettingsActions, TerminalTheme } from '../settings'
 
 // Test factory that creates isolated store instances with fake storage
 const createTestSettingsStore = (storage: FakeStorage) => {
   const defaultSettings: SettingsState = {
-    theme: 'system',
+    theme: 'default-dark',
     fontSize: 14,
-    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+    fontFamily: 'Menlo, monospace',
     autoOpenTerminal: false,
   }
 
@@ -26,7 +26,7 @@ const createTestSettingsStore = (storage: FakeStorage) => {
     persist(
       (set) => ({
         ...defaultSettings,
-        setTheme: (theme: Theme) => set({ theme }),
+        setTheme: (theme: TerminalTheme) => set({ theme }),
         setFontSize: (fontSize: number) => set({ fontSize }),
         setFontFamily: (fontFamily: string) => set({ fontFamily }),
         setAutoOpenTerminal: (autoOpenTerminal: boolean) => set({ autoOpenTerminal }),
@@ -59,14 +59,14 @@ describe('useSettingsStore', () => {
   it('should persist settings to localStorage', async () => {
     const useSettings = createTestSettingsStore(storage)
 
-    useSettings.getState().setTheme('dark')
+    useSettings.getState().setTheme('dracula')
     await new Promise((r) => setTimeout(r, 0)) // Wait for persist
 
     const stored = storage.getItemParsed<{
       state: { theme: string }
     }>('trex-settings')
 
-    expect(stored?.state.theme).toBe('dark')
+    expect(stored?.state.theme).toBe('dracula')
   })
 
   /**
@@ -83,7 +83,7 @@ describe('useSettingsStore', () => {
       'trex-settings',
       JSON.stringify({
         state: {
-          theme: 'dark',
+          theme: 'dracula',
           fontSize: 16,
           fontFamily: 'Fira Code',
           autoOpenTerminal: true,
@@ -95,7 +95,7 @@ describe('useSettingsStore', () => {
     const useSettings = createTestSettingsStore(storage)
     await new Promise((r) => setTimeout(r, 0)) // Wait for hydration
 
-    expect(useSettings.getState().theme).toBe('dark')
+    expect(useSettings.getState().theme).toBe('dracula')
     expect(useSettings.getState().fontSize).toBe(16)
     expect(useSettings.getState().fontFamily).toBe('Fira Code')
     expect(useSettings.getState().autoOpenTerminal).toBe(true)

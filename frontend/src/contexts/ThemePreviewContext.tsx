@@ -5,7 +5,7 @@
  * Preview is NOT persisted - only exists in React state.
  */
 
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useState, useMemo, useRef, useCallback, type ReactNode } from 'react'
 import type { TerminalTheme } from '@/stores/settings'
 
 interface ThemePreviewContextValue {
@@ -15,11 +15,52 @@ interface ThemePreviewContextValue {
 
 const ThemePreviewContext = createContext<ThemePreviewContextValue | null>(null)
 
+// Debounce delay in ms - prevents flicker when mouse is at boundary between items
+const PREVIEW_DEBOUNCE_MS = 30
+
 export function ThemePreviewProvider({ children }: { children: ReactNode }) {
-  const [previewTheme, setPreviewTheme] = useState<TerminalTheme | null>(null)
+  const [previewTheme, setPreviewThemeState] = useState<TerminalTheme | null>(null)
+
+  // Use ref to track current preview and pending timeout
+  const previewRef = useRef<TerminalTheme | null>(null)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Debounced setter that prevents rapid back-and-forth when mouse is at item boundaries
+  const setPreviewTheme = useCallback((theme: TerminalTheme | null) => {
+    // Clear any pending preview change
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
+
+    // If clearing preview (null), do it immediately
+    if (theme === null) {
+      previewRef.current = null
+      setPreviewThemeState(null)
+      return
+    }
+
+    // If same theme, no change needed
+    if (previewRef.current === theme) {
+      return
+    }
+
+    // Debounce the preview change to prevent flicker at boundaries
+    timeoutRef.current = setTimeout(() => {
+      previewRef.current = theme
+      setPreviewThemeState(theme)
+      timeoutRef.current = null
+    }, PREVIEW_DEBOUNCE_MS)
+  }, [])
+
+  // Memoize context value to prevent unnecessary re-renders
+  const value = useMemo(
+    () => ({ previewTheme, setPreviewTheme }),
+    [previewTheme, setPreviewTheme]
+  )
 
   return (
-    <ThemePreviewContext.Provider value={{ previewTheme, setPreviewTheme }}>
+    <ThemePreviewContext.Provider value={value}>
       {children}
     </ThemePreviewContext.Provider>
   )

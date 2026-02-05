@@ -6,6 +6,7 @@
  * Changes are committed via useSettingsStore on selection.
  */
 
+import { memo, useCallback } from 'react'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -16,30 +17,63 @@ import {
 } from '@/components/ui/select'
 import { useSettingsStore, selectTheme, type TerminalTheme } from '@/stores/settings'
 import { useThemePreview } from '@/contexts/ThemePreviewContext'
-import { themes } from '@/themes'
+import { themes, type ThemeInfo } from '@/themes'
+
+// Memoized item to prevent re-renders when context changes
+const ThemeOption = memo(function ThemeOption({
+  themeInfo,
+  onPreview,
+}: {
+  themeInfo: ThemeInfo
+  onPreview: (id: TerminalTheme) => void
+}) {
+  const handlePointerEnter = useCallback(() => {
+    onPreview(themeInfo.id as TerminalTheme)
+  }, [themeInfo.id, onPreview])
+
+  return (
+    <SelectItem
+      value={themeInfo.id}
+      onPointerEnter={handlePointerEnter}
+      onFocus={handlePointerEnter}
+    >
+      <div className="flex items-center gap-2">
+        <div
+          className="w-4 h-4 rounded border border-border"
+          style={{ backgroundColor: themeInfo.theme.background }}
+        />
+        <span
+          className="w-2 h-2 rounded-full"
+          style={{ backgroundColor: themeInfo.theme.foreground }}
+        />
+        {themeInfo.name}
+      </div>
+    </SelectItem>
+  )
+})
 
 export function ThemeSelector() {
   const theme = useSettingsStore(selectTheme)
   const setTheme = useSettingsStore(state => state.setTheme)
   const { setPreviewTheme } = useThemePreview()
 
-  // Start preview when hovering or focusing a theme
-  const handlePreviewStart = (themeId: TerminalTheme) => {
+  // Stable callback for preview - context setter is already memoized
+  const handlePreview = useCallback((themeId: TerminalTheme) => {
     setPreviewTheme(themeId)
-  }
+  }, [setPreviewTheme])
 
   // Clear preview when dropdown closes
-  const handleDropdownClose = (open: boolean) => {
+  const handleDropdownClose = useCallback((open: boolean) => {
     if (!open) {
       setPreviewTheme(null)
     }
-  }
+  }, [setPreviewTheme])
 
   // Commit theme and clear preview
-  const handleCommit = (value: string) => {
+  const handleCommit = useCallback((value: string) => {
     setPreviewTheme(null)
     setTheme(value as TerminalTheme)
-  }
+  }, [setPreviewTheme, setTheme])
 
   return (
     <div className="space-y-2">
@@ -54,24 +88,11 @@ export function ThemeSelector() {
         </SelectTrigger>
         <SelectContent>
           {themes.map((themeInfo) => (
-            <SelectItem
+            <ThemeOption
               key={themeInfo.id}
-              value={themeInfo.id}
-              onPointerEnter={() => handlePreviewStart(themeInfo.id as TerminalTheme)}
-              onFocus={() => handlePreviewStart(themeInfo.id as TerminalTheme)}
-            >
-              <div className="flex items-center gap-2">
-                <div
-                  className="w-4 h-4 rounded border border-border"
-                  style={{ backgroundColor: themeInfo.theme.background }}
-                />
-                <span
-                  className="w-2 h-2 rounded-full"
-                  style={{ backgroundColor: themeInfo.theme.foreground }}
-                />
-                {themeInfo.name}
-              </div>
-            </SelectItem>
+              themeInfo={themeInfo}
+              onPreview={handlePreview}
+            />
           ))}
         </SelectContent>
       </Select>

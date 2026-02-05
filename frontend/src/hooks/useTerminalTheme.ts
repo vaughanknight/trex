@@ -12,6 +12,7 @@ import { useEffect } from 'react'
 import type { Terminal } from '@xterm/xterm'
 import { useSettingsStore, selectTheme, selectFontSize, selectFontFamily } from '@/stores/settings'
 import { getThemeById } from '@/themes'
+import { useThemePreview } from '@/contexts/ThemePreviewContext'
 
 /**
  * Apply current settings to a terminal instance.
@@ -19,17 +20,21 @@ import { getThemeById } from '@/themes'
  * @param terminal - The xterm.js terminal instance
  */
 export function useTerminalTheme(terminal: Terminal | null) {
-  const theme = useSettingsStore(selectTheme)
+  const committedTheme = useSettingsStore(selectTheme)
+  const { previewTheme } = useThemePreview()
   const fontSize = useSettingsStore(selectFontSize)
   const fontFamily = useSettingsStore(selectFontFamily)
+
+  // Use preview theme if set, otherwise use committed theme
+  const activeTheme = previewTheme ?? committedTheme
 
   // Apply theme when it changes
   useEffect(() => {
     if (!terminal) return
 
-    const xtermTheme = getThemeById(theme)
+    const xtermTheme = getThemeById(activeTheme)
     terminal.options.theme = xtermTheme
-  }, [terminal, theme])
+  }, [terminal, activeTheme])
 
   // Apply font size when it changes
   useEffect(() => {

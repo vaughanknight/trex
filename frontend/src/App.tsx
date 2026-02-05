@@ -4,6 +4,7 @@ import { SessionSidebar } from './components/SessionSidebar'
 import { SettingsPanel } from './components/SettingsPanel'
 import { EmptyState } from './components/EmptyState'
 import { TerminalContainer } from './components/TerminalContainer'
+import { ThemePreviewProvider } from './contexts/ThemePreviewContext'
 import { useSessionStore, selectSessionCount } from './stores/sessions'
 import { useUIStore, selectActiveSessionId, selectSidebarCollapsed, selectSettingsPanelOpen } from './stores/ui'
 
@@ -19,20 +20,22 @@ function App() {
   const showEmptyState = sessionCount === 0 || !activeSessionId
 
   return (
-    <SidebarProvider
-      open={!sidebarCollapsed}
-      onOpenChange={(open) => setSidebarCollapsed(!open)}
-    >
-      <SessionSidebar />
-      <SettingsPanel open={settingsPanelOpen} onClose={closeSettings} />
-      <SidebarInset className="app">
-        {showEmptyState ? (
-          <EmptyState />
-        ) : (
-          <TerminalContainer />
-        )}
-      </SidebarInset>
-    </SidebarProvider>
+    <ThemePreviewProvider>
+      <SidebarProvider
+        open={!sidebarCollapsed}
+        onOpenChange={(open) => setSidebarCollapsed(!open)}
+      >
+        <SessionSidebar />
+        <SettingsPanel open={settingsPanelOpen} onClose={closeSettings} />
+        <SidebarInset className="app">
+          {showEmptyState ? (
+            <EmptyState />
+          ) : (
+            <TerminalContainer />
+          )}
+        </SidebarInset>
+      </SidebarProvider>
+    </ThemePreviewProvider>
   )
 }
 

@@ -8,6 +8,7 @@ import { useSettingsStore, selectTheme } from '../stores/settings'
 import { getThemeById } from '../themes'
 import { useWebGLPoolStore } from '../stores/webglPool'
 import { type IWebglAddon } from '../test/fakeWebglAddon'
+import { useThemePreview } from '../contexts/ThemePreviewContext'
 
 interface TerminalProps {
   /** Session ID for message routing */
@@ -148,8 +149,10 @@ export function Terminal({
   // Apply theme/font/size changes from settings store
   useTerminalTheme(xtermRef.current)
 
-  // Update background color to match theme
-  const theme = useSettingsStore(selectTheme)
+  // Update background color to match theme (use preview if set)
+  const committedTheme = useSettingsStore(selectTheme)
+  const { previewTheme } = useThemePreview()
+  const activeTheme = previewTheme ?? committedTheme
 
   // Wire up terminal input when connected
   useEffect(() => {
@@ -252,7 +255,7 @@ export function Terminal({
   }, [isActive, sessionId])
 
   // Get background color from current theme
-  const currentTheme = getThemeById(theme)
+  const currentTheme = getThemeById(activeTheme)
 
   return (
     <div

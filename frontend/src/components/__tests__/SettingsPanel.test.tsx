@@ -13,6 +13,12 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SettingsPanel } from '../SettingsPanel'
 import { useSettingsStore } from '@/stores/settings'
+import { ThemePreviewProvider } from '@/contexts/ThemePreviewContext'
+
+// Wrapper that provides required context for ThemeSelector inside SettingsPanel
+function TestWrapper({ children }: { children: React.ReactNode }) {
+  return <ThemePreviewProvider>{children}</ThemePreviewProvider>
+}
 
 describe('SettingsPanel', () => {
   beforeEach(() => {
@@ -29,7 +35,7 @@ describe('SettingsPanel', () => {
    * Worked Example: open=true → Theme, Font Family, Font Size all visible
    */
   it('renders all settings controls when open', () => {
-    render(<SettingsPanel open={true} onClose={() => {}} />)
+    render(<SettingsPanel open={true} onClose={() => {}} />, { wrapper: TestWrapper })
 
     // Should show all settings sections
     expect(screen.getByText('Settings')).toBeInTheDocument()
@@ -64,7 +70,7 @@ describe('SettingsPanel', () => {
   it('updates theme in store when selection changes', async () => {
     const user = userEvent.setup()
 
-    render(<SettingsPanel open={true} onClose={() => {}} />)
+    render(<SettingsPanel open={true} onClose={() => {}} />, { wrapper: TestWrapper })
 
     // Initial theme should be default-dark
     expect(useSettingsStore.getState().theme).toBe('default-dark')
@@ -89,7 +95,7 @@ describe('SettingsPanel', () => {
     // Set a specific font size
     useSettingsStore.getState().setFontSize(18)
 
-    render(<SettingsPanel open={true} onClose={() => {}} />)
+    render(<SettingsPanel open={true} onClose={() => {}} />, { wrapper: TestWrapper })
 
     // Should display the current font size
     expect(screen.getByText('18px')).toBeInTheDocument()
@@ -107,7 +113,7 @@ describe('SettingsPanel', () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
 
-    render(<SettingsPanel open={true} onClose={onClose} />)
+    render(<SettingsPanel open={true} onClose={onClose} />, { wrapper: TestWrapper })
 
     // Click X button to close
     await user.click(screen.getByRole('button', { name: /close/i }))

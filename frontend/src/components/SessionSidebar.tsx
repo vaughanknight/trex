@@ -23,14 +23,13 @@ import {
 } from '@/components/ui/sidebar'
 import { SessionList } from './SessionList'
 import { NewSessionButton } from './NewSessionButton'
-import { useUIStore, selectSidebarCollapsed, selectSettingsPanelOpen } from '@/stores/ui'
-import { SettingsPanel } from './SettingsPanel'
+import { useUIStore, selectSidebarCollapsed } from '@/stores/ui'
 
 function SettingsButton() {
-  const openSettings = useUIStore(state => state.openSettingsPanel)
+  const toggleSettings = useUIStore(state => state.toggleSettingsPanel)
 
   return (
-    <SidebarMenuButton onClick={openSettings} tooltip="Settings">
+    <SidebarMenuButton onClick={toggleSettings} tooltip="Settings">
       <Settings className="size-4" />
       <span>Settings</span>
     </SidebarMenuButton>
@@ -50,45 +49,32 @@ function ToggleButton() {
 }
 
 export function SessionSidebar() {
-  const settingsPanelOpen = useUIStore(selectSettingsPanelOpen)
-  const closeSettings = useUIStore(state => state.closeSettingsPanel)
-
   return (
-    <>
-      <Sidebar variant="floating" collapsible="icon">
-        <SidebarHeader>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <NewSessionButton />
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarHeader>
+    <Sidebar variant="floating" collapsible="icon">
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <NewSessionButton />
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
 
-        <SidebarContent>
-          <SessionList />
-        </SidebarContent>
+      <SidebarContent>
+        <SessionList />
+      </SidebarContent>
 
-        <SidebarFooter>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <ToggleButton />
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SettingsButton />
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <ToggleButton />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SettingsButton />
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
 
-        <SidebarRail />
-      </Sidebar>
-
-      {/* Settings Panel */}
-      <SettingsPanel
-        open={settingsPanelOpen}
-        onOpenChange={(open) => {
-          if (!open) closeSettings()
-        }}
-      />
-    </>
+      <SidebarRail />
+    </Sidebar>
   )
 }

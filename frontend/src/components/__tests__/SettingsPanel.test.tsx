@@ -3,11 +3,12 @@
  *
  * Promoted tests for settings panel functionality.
  * Tests verify theme/font/size controls work correctly with the store.
+ * Panel is a simple div that snaps beside the sidebar (no Sheet/overlay).
  *
- * @see /docs/plans/003-sidebar-settings-sessions/sidebar-settings-sessions-spec.md
+ * @see /docs/plans/006-settings-panel-rework/settings-panel-rework-spec.md
  */
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SettingsPanel } from '../SettingsPanel'
@@ -28,13 +29,28 @@ describe('SettingsPanel', () => {
    * Worked Example: open=true → Theme, Font Family, Font Size all visible
    */
   it('renders all settings controls when open', () => {
-    render(<SettingsPanel open={true} onOpenChange={() => {}} />)
+    render(<SettingsPanel open={true} onClose={() => {}} />)
 
     // Should show all settings sections
     expect(screen.getByText('Settings')).toBeInTheDocument()
     expect(screen.getByText('Theme')).toBeInTheDocument()
     expect(screen.getByText('Font Family')).toBeInTheDocument()
     expect(screen.getByText('Font Size')).toBeInTheDocument()
+  })
+
+  /**
+   * @test-doc
+   * Why: Panel should not render anything when closed
+   * Contract: SettingsPanel returns null when open=false
+   * Usage Notes: Conditional rendering avoids DOM clutter
+   * Quality Contribution: Validates instant snap behavior (no animation needed)
+   * Worked Example: open=false → nothing in DOM
+   */
+  it('renders nothing when closed', () => {
+    const { container } = render(<SettingsPanel open={false} onClose={() => {}} />)
+
+    // Should render nothing
+    expect(container.firstChild).toBeNull()
   })
 
   /**
@@ -48,7 +64,7 @@ describe('SettingsPanel', () => {
   it('updates theme in store when selection changes', async () => {
     const user = userEvent.setup()
 
-    render(<SettingsPanel open={true} onOpenChange={() => {}} />)
+    render(<SettingsPanel open={true} onClose={() => {}} />)
 
     // Initial theme should be default-dark
     expect(useSettingsStore.getState().theme).toBe('default-dark')
@@ -73,7 +89,7 @@ describe('SettingsPanel', () => {
     // Set a specific font size
     useSettingsStore.getState().setFontSize(18)
 
-    render(<SettingsPanel open={true} onOpenChange={() => {}} />)
+    render(<SettingsPanel open={true} onClose={() => {}} />)
 
     // Should display the current font size
     expect(screen.getByText('18px')).toBeInTheDocument()
@@ -81,25 +97,21 @@ describe('SettingsPanel', () => {
 
   /**
    * @test-doc
-   * Why: Panel must close when user dismisses it
-   * Contract: onOpenChange(false) called when Sheet closes
-   * Usage Notes: Parent component controls open state
-   * Quality Contribution: Ensures proper sheet close behavior
-   * Worked Example: Press Escape → onOpenChange(false) called
+   * Why: Panel must close when X button is clicked (AC-04)
+   * Contract: onClose callback is called when X button is clicked
+   * Usage Notes: Parent component controls open state via onClose
+   * Quality Contribution: Ensures proper panel close behavior
+   * Worked Example: Click X button → onClose() called
    */
-  it('calls onOpenChange when closed', async () => {
+  it('calls onClose when X button is clicked', async () => {
     const user = userEvent.setup()
-    let openState = true
-    const onOpenChange = (open: boolean) => {
-      openState = open
-    }
+    const onClose = vi.fn()
 
-    render(<SettingsPanel open={openState} onOpenChange={onOpenChange} />)
+    render(<SettingsPanel open={true} onClose={onClose} />)
 
-    // Press Escape to close
-    await user.keyboard('{Escape}')
+    // Click X button to close
+    await user.click(screen.getByRole('button', { name: /close/i }))
 
-    // onOpenChange should have been called with false
-    expect(openState).toBe(false)
+    expect(onClose).toHaveBeenCalled()
   })
 })

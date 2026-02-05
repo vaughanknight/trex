@@ -9,6 +9,7 @@ import { X } from 'lucide-react'
 import { ThemeSelector } from './ThemeSelector'
 import { FontSelector } from './FontSelector'
 import { FontSizeSlider } from './FontSizeSlider'
+import { IdleThresholdSettings } from './IdleThresholdSettings'
 
 interface SettingsPanelProps {
   open: boolean
@@ -52,6 +53,11 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         {/* Font Size */}
         <div className="space-y-2">
           <FontSizeSlider />
+        </div>
+
+        {/* Idle Indicators */}
+        <div className="space-y-2">
+          <IdleThresholdSettings />
         </div>
       </div>
     </div>

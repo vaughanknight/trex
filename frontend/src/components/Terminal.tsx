@@ -3,6 +3,7 @@ import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { useCentralWebSocket, type SessionHandlers } from '../hooks/useCentralWebSocket'
+import { useActivityDebounce } from '../hooks/useActivityDebounce'
 import { useTerminalTheme, getTerminalOptions } from '../hooks/useTerminalTheme'
 import { useSettingsStore, selectTheme } from '../stores/settings'
 import { getThemeById } from '../themes'
@@ -43,6 +44,9 @@ export function Terminal({
 
   const { sendInput, sendResize, registerSession, unregisterSession, connectionState } =
     useCentralWebSocket()
+
+  // Activity tracking for idle indicators (per Phase 1 of plan 007)
+  const updateActivityDebounced = useActivityDebounce()
 
   // Use refs to avoid re-running effects when these callbacks change
   const sendResizeRef = useRef(sendResize)
@@ -166,7 +170,10 @@ export function Terminal({
     }
 
     // Handle user input - route to specific session
+    // Per Critical Finding 02: Fire-and-forget activity update (non-blocking)
     const disposable = xtermRef.current.onData((data) => {
+      // Update activity timestamp (debounced, fire-and-forget)
+      updateActivityDebounced(sessionId)
       if (connectionState === 'connected') {
         sendInputRef.current(sessionId, data)
       }
@@ -175,7 +182,7 @@ export function Terminal({
     return () => {
       disposable.dispose()
     }
-  }, [connectionState, sessionId]) // sendInput/sendResize accessed via refs
+  }, [connectionState, sessionId, updateActivityDebounced]) // sendInput/sendResize accessed via refs
 
   // Show connection state on initial render
   useEffect(() => {

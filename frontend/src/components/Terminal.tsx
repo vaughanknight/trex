@@ -6,6 +6,7 @@ import { useCentralWebSocket, type SessionHandlers } from '../hooks/useCentralWe
 import { useActivityDebounce } from '../hooks/useActivityDebounce'
 import { useTerminalTheme, getTerminalOptions } from '../hooks/useTerminalTheme'
 import { useSettingsStore, selectTheme } from '../stores/settings'
+import { useSessionStore } from '../stores/sessions'
 import { getThemeById } from '../themes'
 import { useWebGLPoolStore } from '../stores/webglPool'
 import { type IWebglAddon } from '../test/fakeWebglAddon'
@@ -183,6 +184,23 @@ export function Terminal({
       disposable.dispose()
     }
   }, [connectionState, sessionId, updateActivityDebounced]) // sendInput/sendResize accessed via refs
+
+  // Get title update function from session store
+  const updateTitleFromTerminal = useSessionStore((state) => state.updateTitleFromTerminal)
+
+  // Wire up terminal title change events (OSC 0 and OSC 2 escape sequences)
+  // Per Plan 008: Dynamic session titles from shell/vim/tmux title updates
+  useEffect(() => {
+    if (!xtermRef.current) return
+
+    const disposable = xtermRef.current.onTitleChange((title) => {
+      updateTitleFromTerminal(sessionId, title)
+    })
+
+    return () => {
+      disposable.dispose()
+    }
+  }, [sessionId, updateTitleFromTerminal])
 
   // Show connection state on initial render
   useEffect(() => {

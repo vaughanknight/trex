@@ -45,6 +45,7 @@ describe('Session store integration', () => {
       shellType: 'bash',
       status: 'active',
       createdAt: Date.now(),
+      userRenamed: false,
     })
 
     render(<SessionCount />)
@@ -58,6 +59,7 @@ describe('Session store integration', () => {
       shellType: 'bash',
       status: 'active',
       createdAt: Date.now(),
+      userRenamed: false,
     })
 
     render(<SessionList />)

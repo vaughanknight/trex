@@ -1,39 +1,43 @@
 /**
- * NewSessionButton - Creates new terminal session.
+ * NewSessionButton - Creates new terminal session via WebSocket.
  *
- * Phase 3: Creates a mock session and adds to store for UI demonstration.
- * Phase 5: Will send "create" message via WebSocket and handle session_created response.
+ * Per Phase 5: Sends "create" message via central WebSocket.
+ * On session_created response, adds session to store and sets as active.
  */
 import { Plus } from 'lucide-react'
 import { SidebarMenuButton } from '@/components/ui/sidebar'
 import { useSessionStore } from '@/stores/sessions'
 import { useUIStore } from '@/stores/ui'
+import { useCentralWebSocket } from '@/hooks/useCentralWebSocket'
 
-// Counter for generating unique session names
-let sessionCounter = 0
+// Counter for generating unique session names when shellType is the same
+const shellCounters = new Map<string, number>()
 
 export function NewSessionButton() {
   const addSession = useSessionStore(state => state.addSession)
   const setActiveSession = useUIStore(state => state.setActiveSession)
+  const { createSession } = useCentralWebSocket()
 
   const handleClick = () => {
-    // TODO Phase 5: Send "create" message via WebSocket
-    // const msg: ClientMessage = { type: 'create' }
-    // webSocket.send(JSON.stringify(msg))
-    // Handle session_created response to get real sessionId and shellType
+    // Send "create" message via WebSocket
+    // On session_created response, add to store and set as active
+    createSession((sessionId, shellType) => {
+      // Generate unique name based on shell type (bash-1, zsh-2, etc.)
+      const count = (shellCounters.get(shellType) || 0) + 1
+      shellCounters.set(shellType, count)
 
-    // For now, create a mock session for UI demonstration
-    sessionCounter++
-    const newSession = {
-      id: `mock-${Date.now()}`,
-      name: `bash-${sessionCounter}`,
-      shellType: 'bash',
-      status: 'active' as const,
-      createdAt: Date.now(),
-    }
+      const newSession = {
+        id: sessionId,
+        name: `${shellType}-${count}`,
+        shellType,
+        status: 'active' as const,
+        createdAt: Date.now(),
+        userRenamed: false, // Allow automatic title updates until user manually renames
+      }
 
-    addSession(newSession)
-    setActiveSession(newSession.id)
+      addSession(newSession)
+      setActiveSession(sessionId)
+    })
   }
 
   return (

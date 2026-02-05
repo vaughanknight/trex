@@ -58,6 +58,7 @@ describe('SessionList', () => {
         shellType: 'bash',
         status: 'active',
         createdAt: Date.now(),
+        userRenamed: false,
       })
 
       render(
@@ -78,6 +79,7 @@ describe('SessionList', () => {
         shellType: 'zsh',
         status: 'active',
         createdAt: 2000,
+        userRenamed: false,
       })
       store.addSession({
         id: 's1',
@@ -85,6 +87,7 @@ describe('SessionList', () => {
         shellType: 'bash',
         status: 'active',
         createdAt: 1000,
+        userRenamed: false,
       })
 
       render(
@@ -105,6 +108,7 @@ describe('SessionList', () => {
         shellType: 'bash',
         status: 'active',
         createdAt: Date.now(),
+        userRenamed: false,
       })
 
       render(

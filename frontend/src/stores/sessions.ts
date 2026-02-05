@@ -19,6 +19,8 @@ export interface Session {
   shellType: string
   status: SessionStatus
   createdAt: number
+  /** Whether the user has manually renamed this session (blocks automatic title updates) */
+  userRenamed: boolean
 }
 
 export interface SessionsState {
@@ -30,6 +32,8 @@ export interface SessionsActions {
   removeSession: (id: string) => void
   updateStatus: (id: string, status: SessionStatus) => void
   updateName: (id: string, name: string) => void
+  /** Update session name from terminal OSC escape sequence (respects userRenamed flag) */
+  updateTitleFromTerminal: (id: string, title: string) => void
   clearSessions: () => void
 }
 
@@ -70,7 +74,28 @@ export const useSessionStore = create<SessionsStore>((set) => ({
       const session = state.sessions.get(id)
       if (!session) return state
       const newMap = new Map(state.sessions)
-      newMap.set(id, { ...session, name })
+      // Mark as user-renamed to prevent automatic title updates from overwriting
+      newMap.set(id, { ...session, name, userRenamed: true })
+      return { sessions: newMap }
+    }),
+
+  updateTitleFromTerminal: (id, title) =>
+    set((state) => {
+      const session = state.sessions.get(id)
+      if (!session) return state
+
+      // Respect user's manual rename - don't overwrite
+      if (session.userRenamed) return state
+
+      const newMap = new Map(state.sessions)
+
+      // Handle empty title as reset to shellType pattern
+      if (!title.trim()) {
+        newMap.set(id, { ...session, name: session.shellType })
+        return { sessions: newMap }
+      }
+
+      newMap.set(id, { ...session, name: title })
       return { sessions: newMap }
     }),
 

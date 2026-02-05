@@ -26,6 +26,7 @@ describe('Context menu session actions', () => {
         shellType: 'bash',
         status: 'active',
         createdAt: Date.now(),
+        userRenamed: false,
       })
 
       store.updateName('s1', 'my-terminal')
@@ -44,6 +45,7 @@ describe('Context menu session actions', () => {
         shellType: 'bash',
         status: 'active',
         createdAt: Date.now(),
+        userRenamed: false,
       })
 
       expect(useSessionStore.getState().sessions.has('s1')).toBe(true)
@@ -59,6 +61,7 @@ describe('Context menu session actions', () => {
         shellType: 'bash',
         status: 'active',
         createdAt: Date.now(),
+        userRenamed: false,
       })
 
       useUIStore.getState().setActiveSession('s1')
@@ -85,6 +88,7 @@ describe('Context menu session actions', () => {
         shellType: 'bash',
         status: 'active',
         createdAt: Date.now(),
+        userRenamed: false,
       })
 
       const session = useSessionStore.getState().sessions.get('s1')

@@ -29,7 +29,7 @@ directories:
   - path: "010-github-oauth/"
     summary: "GitHub OAuth authentication for secure remote access with user allowlist"
     keywords: [oauth, github, authentication, security, remote-access, authorization]
-    status: research
+    status: specified
     complexity: CS-4
     issue: 28
 
@@ -57,3 +57,7 @@ files:
   - path: "010-github-oauth/research-dossier.md"
     summary: "Research synthesis for GitHub OAuth integration with architecture analysis"
     keywords: [research, oauth, github, authentication, websocket, jwt]
+
+  - path: "010-github-oauth/github-oauth-spec.md"
+    summary: "Feature specification for GitHub OAuth with acceptance criteria and complexity analysis"
+    keywords: [spec, oauth, github, authentication, security, remote-access]

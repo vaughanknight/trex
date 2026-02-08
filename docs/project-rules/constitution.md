@@ -1,8 +1,8 @@
 # trex Project Constitution
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Ratified**: 2026-02-04
-**Last Amended**: 2026-02-05
+**Last Amended**: 2026-02-09
 **Status**: RATIFIED
 
 ---
@@ -160,15 +160,24 @@ trex is a **UI layer**, not an agent integration layer.
 - **Rationale**: Typical developer workflow involves 5-15 active projects
 - **Scalability**: Optimize for single-user, not multi-tenant
 
-### Security (v1)
+### Security
 
-**Access Model**: Localhost only
-- **Rationale**: Simplifies v1, no authentication complexity
-- **Trust Model**: Local process has same privileges as user's terminal
+**Access Model**: Configurable (Localhost or Authenticated Remote)
+- **Default**: Localhost only (no authentication required)
+- **Remote Mode**: GitHub OAuth with username allowlist
+- **Trust Model**:
+  - Localhost: Local process has same privileges as user's terminal
+  - Remote: Only approved GitHub users can access
+
+**Authentication** (when enabled):
+- **Provider**: GitHub OAuth (other providers may be added later)
+- **Authorization**: Username allowlist defined by machine owner
+- **Session**: JWT tokens with configurable expiration
+- **Feature Flag**: `TREX_AUTH_ENABLED` controls auth system
 
 **Data Sensitivity**: Terminal history may contain secrets
 - **Consideration**: Handle session data carefully in UI (obscure passwords, provide clear controls)
-- **Future**: Network exposure requires authentication, encryption, audit logging
+- **Token Security**: httpOnly cookies preferred, secure flag in production
 
 ### Scalability (v1)
 
@@ -674,6 +683,16 @@ LLM agents working on this project MUST update the terminal title to reflect cur
 ---
 
 ## Changelog
+
+### v1.3.0 (2026-02-09)
+
+- **Authentication Support**: Added optional GitHub OAuth authentication
+  - Access model now configurable: localhost-only (default) or authenticated remote
+  - GitHub OAuth with username allowlist for access control
+  - JWT session tokens with feature flag control (`TREX_AUTH_ENABLED`)
+  - Security guidance for token storage (httpOnly cookies preferred)
+  - Enables secure remote access to terminal sessions
+  - See `docs/plans/010-github-oauth/` for full specification
 
 ### v1.2.0 (2026-02-05)
 

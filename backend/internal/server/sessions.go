@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/vaughanknight/trex/internal/auth"
 	"github.com/vaughanknight/trex/internal/terminal"
 )
 
@@ -17,7 +18,12 @@ func handleSessions(registry *terminal.SessionRegistry) http.HandlerFunc {
 			return
 		}
 
-		sessions := registry.List()
+		// Filter sessions by owner when auth is enabled
+		var owner string
+		if user := auth.UserFromContext(r.Context()); user != nil {
+			owner = user.Username
+		}
+		sessions := registry.ListByOwner(owner)
 
 		// Convert to SessionInfo slice for JSON response
 		infos := make([]terminal.SessionInfo, 0, len(sessions))
@@ -49,6 +55,14 @@ func handleSessionDelete(registry *terminal.SessionRegistry) http.HandlerFunc {
 		if session == nil {
 			http.Error(w, "session not found", http.StatusNotFound)
 			return
+		}
+
+		// Check ownership when auth is enabled
+		if user := auth.UserFromContext(r.Context()); user != nil {
+			if session.Owner != "" && session.Owner != user.Username {
+				http.Error(w, "session not found", http.StatusNotFound)
+				return
+			}
 		}
 
 		// Close session gracefully

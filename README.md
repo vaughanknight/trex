@@ -76,6 +76,37 @@ Open http://localhost:3000 in your browser.
 
 Open `electron/release/trex-*.dmg` and install the app.
 
+## Authentication (Optional)
+
+trex supports GitHub OAuth for secure remote access. When disabled (default), trex runs locally without authentication.
+
+### Quick Start
+
+1. Set environment variables:
+
+```bash
+export TREX_AUTH_ENABLED=true
+export TREX_GITHUB_CLIENT_ID=your_client_id
+export TREX_GITHUB_CLIENT_SECRET=your_client_secret
+export TREX_GITHUB_CALLBACK_URL=http://localhost:3000/auth/callback
+export TREX_JWT_SECRET=$(openssl rand -hex 32)
+```
+
+2. Create an allowlist at `~/.config/trex/allowed_users.json`:
+
+```json
+{
+  "version": 1,
+  "users": ["your-github-username"]
+}
+```
+
+3. Start trex — it will bind to `0.0.0.0:3000` when auth is enabled.
+
+For detailed setup instructions, see [docs/how/oauth-setup.md](docs/how/oauth-setup.md).
+
+To disable authentication, unset `TREX_AUTH_ENABLED` or set it to `false` and restart.
+
 ## API
 
 ### Health Check

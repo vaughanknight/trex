@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/vaughanknight/trex/internal/config"
 	"github.com/vaughanknight/trex/internal/terminal"
 )
 
@@ -24,7 +25,7 @@ func TestIntegration_MultipleSessions(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	srv := New("test-version")
+	srv := New("test-version", config.Load())
 	server := httptest.NewServer(srv)
 	defer server.Close()
 
@@ -109,7 +110,7 @@ func TestIntegration_ConcurrentSessionCreate(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	srv := New("test-version")
+	srv := New("test-version", config.Load())
 	server := httptest.NewServer(srv)
 	defer server.Close()
 

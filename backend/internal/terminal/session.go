@@ -33,6 +33,7 @@ type Session struct {
 	ShellType string        // Shell type (e.g., "bash", "zsh")
 	Status    SessionStatus // Lifecycle status
 	CreatedAt time.Time     // When session was created
+	Owner     string        // GitHub username of session creator (empty when auth disabled)
 
 	pty  PTY
 	conn Conn

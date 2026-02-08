@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/vaughanknight/trex/internal/auth"
+	"github.com/vaughanknight/trex/internal/config"
 	"github.com/vaughanknight/trex/internal/terminal"
 )
 
@@ -20,7 +22,7 @@ import (
 // - Worked Example: Connect to /ws → send input "echo test\r" → receive output containing "test"
 
 func TestHandleTerminal_Upgrade(t *testing.T) {
-	srv := New("test-version")
+	srv := New("test-version", config.Load())
 	server := httptest.NewServer(srv)
 	defer server.Close()
 
@@ -45,7 +47,7 @@ func TestHandleTerminal_EchoCommand(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	srv := New("test-version")
+	srv := New("test-version", config.Load())
 	server := httptest.NewServer(srv)
 	defer server.Close()
 
@@ -149,7 +151,7 @@ func TestHandleTerminal_Resize(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	srv := New("test-version")
+	srv := New("test-version", config.Load())
 	server := httptest.NewServer(srv)
 	defer server.Close()
 
@@ -185,7 +187,7 @@ func TestHandleTerminal_Resize(t *testing.T) {
 // - Worked Example: Send {sessionId: "s1"} → routed to session s1
 
 func TestHandleTerminal_SessionCreate(t *testing.T) {
-	srv := New("test-version")
+	srv := New("test-version", config.Load())
 	server := httptest.NewServer(srv)
 	defer server.Close()
 
@@ -245,7 +247,7 @@ func TestHandleTerminal_SessionRouting(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	srv := New("test-version")
+	srv := New("test-version", config.Load())
 	server := httptest.NewServer(srv)
 	defer server.Close()
 
@@ -326,7 +328,7 @@ func TestHandleTerminal_SessionRouting(t *testing.T) {
 }
 
 func TestHandleTerminal_UnknownSessionId(t *testing.T) {
-	srv := New("test-version")
+	srv := New("test-version", config.Load())
 	server := httptest.NewServer(srv)
 	defer server.Close()
 
@@ -371,5 +373,190 @@ func TestHandleTerminal_UnknownSessionId(t *testing.T) {
 
 	if !foundError {
 		t.Error("Expected error for unknown sessionId")
+	}
+}
+
+// --- Phase 5: WebSocket Authentication Tests ---
+
+func TestHandleTerminal_AuthEnabled_RejectsWithoutToken(t *testing.T) {
+	// Test Doc:
+	// - Why: WebSocket must reject unauthenticated connections when auth enabled
+	// - Contract: Auth enabled + no cookie → 401 (upgrade rejected by middleware)
+
+	cfg := &config.Config{
+		BindAddress: "127.0.0.1:0",
+		AuthEnabled: true,
+		JWTSecret:   "test-secret-ws",
+	}
+	srv := New("test-version", cfg)
+	server := httptest.NewServer(srv)
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
+
+	dialer := websocket.Dialer{}
+	_, resp, err := dialer.Dial(wsURL, nil)
+	if err == nil {
+		t.Fatal("Expected WebSocket dial to fail without auth token")
+	}
+	if resp != nil && resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusUnauthorized)
+	}
+}
+
+func TestHandleTerminal_AuthEnabled_AcceptsValidToken(t *testing.T) {
+	// Test Doc:
+	// - Why: WebSocket must accept authenticated connections
+	// - Contract: Auth enabled + valid cookie → upgrade succeeds
+
+	cfg := &config.Config{
+		BindAddress: "127.0.0.1:0",
+		AuthEnabled: true,
+		JWTSecret:   "test-secret-ws",
+	}
+	srv := New("test-version", cfg)
+	server := httptest.NewServer(srv)
+	defer server.Close()
+
+	// Generate a valid JWT token
+	jwtSvc := auth.NewJWTService("test-secret-ws")
+	user := &auth.GitHubUser{Username: "alice", AvatarURL: "https://github.com/alice.png"}
+	token, err := jwtSvc.GenerateAccessToken(user)
+	if err != nil {
+		t.Fatalf("Failed to generate token: %v", err)
+	}
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
+
+	dialer := websocket.Dialer{}
+	header := http.Header{}
+	header.Set("Cookie", "trex_access_token="+token)
+	conn, resp, err := dialer.Dial(wsURL, header)
+	if err != nil {
+		t.Fatalf("WebSocket dial error: %v", err)
+	}
+	defer conn.Close()
+
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusSwitchingProtocols)
+	}
+}
+
+func TestHandleTerminal_SessionOwnerSet(t *testing.T) {
+	// Test Doc:
+	// - Why: Sessions must be owned by the authenticated user
+	// - Contract: Auth enabled → session.Owner = authenticated username
+
+	cfg := &config.Config{
+		BindAddress: "127.0.0.1:0",
+		AuthEnabled: true,
+		JWTSecret:   "test-secret-ws",
+	}
+	srv := New("test-version", cfg)
+	server := httptest.NewServer(srv)
+	defer server.Close()
+
+	jwtSvc := auth.NewJWTService("test-secret-ws")
+	user := &auth.GitHubUser{Username: "alice", AvatarURL: "https://github.com/alice.png"}
+	token, _ := jwtSvc.GenerateAccessToken(user)
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
+
+	dialer := websocket.Dialer{}
+	header := http.Header{}
+	header.Set("Cookie", "trex_access_token="+token)
+	conn, _, err := dialer.Dial(wsURL, header)
+	if err != nil {
+		t.Fatalf("WebSocket dial error: %v", err)
+	}
+	defer conn.Close()
+
+	// Create a session
+	createMsg := terminal.ClientMessage{Type: terminal.MsgTypeCreate}
+	createBytes, _ := json.Marshal(createMsg)
+	conn.WriteMessage(websocket.TextMessage, createBytes)
+
+	// Get session ID
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	var sessionID string
+	for i := 0; i < 10; i++ {
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			break
+		}
+		var msg terminal.ServerMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			continue
+		}
+		if msg.Type == terminal.MsgTypeSessionCreated {
+			sessionID = msg.SessionId
+			break
+		}
+	}
+
+	if sessionID == "" {
+		t.Fatal("Did not receive session ID")
+	}
+
+	// Verify session owner in registry
+	session := srv.registry.Get(sessionID)
+	if session == nil {
+		t.Fatal("Session not found in registry")
+	}
+	if session.Owner != "alice" {
+		t.Errorf("session.Owner = %q, want %q", session.Owner, "alice")
+	}
+}
+
+func TestHandleTerminal_NoOwnerWhenAuthDisabled(t *testing.T) {
+	// Test Doc:
+	// - Why: Session owner must be empty when auth is disabled
+	// - Contract: Auth disabled → session.Owner = ""
+
+	srv := New("test-version", config.Load())
+	server := httptest.NewServer(srv)
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
+
+	dialer := websocket.Dialer{}
+	conn, _, err := dialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("WebSocket dial error: %v", err)
+	}
+	defer conn.Close()
+
+	// Create a session
+	createMsg := terminal.ClientMessage{Type: terminal.MsgTypeCreate}
+	createBytes, _ := json.Marshal(createMsg)
+	conn.WriteMessage(websocket.TextMessage, createBytes)
+
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	var sessionID string
+	for i := 0; i < 10; i++ {
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			break
+		}
+		var msg terminal.ServerMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			continue
+		}
+		if msg.Type == terminal.MsgTypeSessionCreated {
+			sessionID = msg.SessionId
+			break
+		}
+	}
+
+	if sessionID == "" {
+		t.Fatal("Did not receive session ID")
+	}
+
+	session := srv.registry.Get(sessionID)
+	if session == nil {
+		t.Fatal("Session not found in registry")
+	}
+	if session.Owner != "" {
+		t.Errorf("session.Owner = %q, want empty string", session.Owner)
 	}
 }

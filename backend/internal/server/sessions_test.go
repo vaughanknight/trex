@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vaughanknight/trex/internal/auth"
 	"github.com/vaughanknight/trex/internal/terminal"
 )
 
@@ -212,5 +213,172 @@ func TestGetSessions_MethodNotAllowed(t *testing.T) {
 		if rec.Code != http.StatusMethodNotAllowed {
 			t.Errorf("%s: Status = %d, want %d", method, rec.Code, http.StatusMethodNotAllowed)
 		}
+	}
+}
+
+// --- Phase 5: Session Ownership Tests ---
+
+func TestGetSessions_FiltersByOwner(t *testing.T) {
+	// Test Doc:
+	// - Why: Users should only see their own sessions when auth is enabled
+	// - Contract: Authenticated request → only returns sessions owned by user
+
+	registry := terminal.NewSessionRegistry()
+	now := time.Now()
+
+	registry.Add(&terminal.Session{
+		ID:        "s1",
+		Name:      "bash-1",
+		ShellType: "bash",
+		Status:    terminal.SessionStatusActive,
+		CreatedAt: now,
+		Owner:     "alice",
+	})
+	registry.Add(&terminal.Session{
+		ID:        "s2",
+		Name:      "zsh-1",
+		ShellType: "zsh",
+		Status:    terminal.SessionStatusActive,
+		CreatedAt: now,
+		Owner:     "bob",
+	})
+
+	handler := handleSessions(registry)
+
+	// Request with alice's context
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
+	user := &auth.GitHubUser{Username: "alice"}
+	ctx := auth.WithUser(req.Context(), user)
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	var sessions []terminal.SessionInfo
+	json.Unmarshal(rec.Body.Bytes(), &sessions)
+
+	if len(sessions) != 1 {
+		t.Fatalf("Sessions length = %d, want 1", len(sessions))
+	}
+	if sessions[0].ID != "s1" {
+		t.Errorf("Session ID = %q, want %q", sessions[0].ID, "s1")
+	}
+}
+
+func TestGetSessions_ReturnsAllWhenNoAuth(t *testing.T) {
+	// Test Doc:
+	// - Why: All sessions visible when auth is disabled
+	// - Contract: No user in context → returns all sessions
+
+	registry := terminal.NewSessionRegistry()
+	now := time.Now()
+
+	registry.Add(&terminal.Session{
+		ID:        "s1",
+		Name:      "bash-1",
+		ShellType: "bash",
+		Status:    terminal.SessionStatusActive,
+		CreatedAt: now,
+		Owner:     "",
+	})
+	registry.Add(&terminal.Session{
+		ID:        "s2",
+		Name:      "zsh-1",
+		ShellType: "zsh",
+		Status:    terminal.SessionStatusActive,
+		CreatedAt: now,
+		Owner:     "",
+	})
+
+	handler := handleSessions(registry)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	var sessions []terminal.SessionInfo
+	json.Unmarshal(rec.Body.Bytes(), &sessions)
+
+	if len(sessions) != 2 {
+		t.Fatalf("Sessions length = %d, want 2", len(sessions))
+	}
+}
+
+func TestDeleteSession_OwnershipCheck(t *testing.T) {
+	// Test Doc:
+	// - Why: Users must not delete other users' sessions
+	// - Contract: Authenticated user can't delete session owned by another user
+
+	registry := terminal.NewSessionRegistry()
+
+	fakePTY := terminal.NewFakePTY()
+	fakeWS := terminal.NewFakeWebSocket()
+
+	session := terminal.NewSession(fakePTY, fakeWS)
+	session.ID = "s1"
+	session.Name = "bash-1"
+	session.ShellType = "bash"
+	session.Status = terminal.SessionStatusActive
+	session.Owner = "alice"
+
+	registry.Add(session)
+
+	handler := handleSessionDelete(registry)
+
+	// Try to delete as bob
+	req := httptest.NewRequest(http.MethodDelete, "/api/sessions/s1", nil)
+	user := &auth.GitHubUser{Username: "bob"}
+	ctx := auth.WithUser(req.Context(), user)
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+
+	// Session should still exist
+	if registry.Get("s1") == nil {
+		t.Error("Session should not be deleted by non-owner")
+	}
+}
+
+func TestDeleteSession_OwnerCanDelete(t *testing.T) {
+	// Test Doc:
+	// - Why: Session owner must be able to delete their own sessions
+	// - Contract: Owner deleting own session → 204
+
+	registry := terminal.NewSessionRegistry()
+
+	fakePTY := terminal.NewFakePTY()
+	fakeWS := terminal.NewFakeWebSocket()
+
+	session := terminal.NewSession(fakePTY, fakeWS)
+	session.ID = "s1"
+	session.Name = "bash-1"
+	session.ShellType = "bash"
+	session.Status = terminal.SessionStatusActive
+	session.Owner = "alice"
+
+	registry.Add(session)
+
+	handler := handleSessionDelete(registry)
+
+	// Delete as alice (the owner)
+	req := httptest.NewRequest(http.MethodDelete, "/api/sessions/s1", nil)
+	user := &auth.GitHubUser{Username: "alice"}
+	ctx := auth.WithUser(req.Context(), user)
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("Status = %d, want %d", rec.Code, http.StatusNoContent)
+	}
+
+	if registry.Get("s1") != nil {
+		t.Error("Session should be deleted by owner")
 	}
 }

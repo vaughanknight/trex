@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/sidebar'
 import { SessionList } from './SessionList'
 import { NewSessionButton } from './NewSessionButton'
+import { AuthButton } from './AuthButton'
 import { useUIStore, selectSidebarCollapsed } from '@/stores/ui'
 
 function SettingsButton() {
@@ -65,6 +66,9 @@ export function SessionSidebar() {
 
       <SidebarFooter>
         <SidebarMenu>
+          <SidebarMenuItem>
+            <AuthButton />
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <ToggleButton />
           </SidebarMenuItem>

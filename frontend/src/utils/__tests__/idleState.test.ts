@@ -8,12 +8,11 @@
  * Per AC-12: Tests duration formatting for tooltips.
  */
 
-import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, test, expect } from 'vitest'
 import {
   computeIdleState,
   formatIdleDuration,
   DEFAULT_THRESHOLDS,
-  type IdleState,
   type IdleThresholds,
 } from '../idleState'
 

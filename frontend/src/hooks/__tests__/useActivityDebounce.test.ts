@@ -223,7 +223,7 @@ describe('useActivityDebounce', () => {
        * Quality Contribution: Enables component lifecycle correctness
        * Acceptance Criteria: New hook instance works correctly after remount
        */
-      const { result, unmount, rerender } = renderHook(() => useActivityDebounce())
+      const { result, unmount } = renderHook(() => useActivityDebounce())
 
       // First usage
       act(() => {

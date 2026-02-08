@@ -252,7 +252,7 @@ export function Terminal({
 
         if (addon) {
           // Load addon into terminal
-          terminal.loadAddon(addon as Parameters<typeof terminal.loadAddon>[0])
+          terminal.loadAddon(addon as unknown as Parameters<typeof terminal.loadAddon>[0])
           webglAddonRef.current = addon
           // Refresh to sync rendering
           terminal.refresh(0, terminal.rows - 1)

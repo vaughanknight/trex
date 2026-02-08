@@ -10,7 +10,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   detectGPUCapability,
   getDefaultPoolSize,
-  type GPUCapabilityResult,
 } from '../gpuCapability'
 import {
   installFakeGPUContext,

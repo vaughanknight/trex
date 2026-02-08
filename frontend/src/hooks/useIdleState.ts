@@ -61,8 +61,9 @@ export function useIdleState(
   sessionId: string,
   thresholds: IdleThresholds = DEFAULT_THRESHOLDS
 ): IdleStateResult {
-  // Subscribe to the global tick for periodic recalculation
-  const tick = useIdleComputation()
+  // Subscribe to the global tick for periodic recalculation.
+  // The return value is unused but the subscription triggers re-renders.
+  useIdleComputation()
 
   // Get the last activity timestamp for this session
   const lastActivityAt = useActivityStore(selectLastActivityAt(sessionId))

@@ -26,6 +26,13 @@ directories:
     complexity: CS-2
     issue: 27
 
+  - path: "010-github-oauth/"
+    summary: "GitHub OAuth authentication for secure remote access with user allowlist"
+    keywords: [oauth, github, authentication, security, remote-access, authorization]
+    status: research
+    complexity: CS-4
+    issue: 28
+
 files:
   - path: "001-hello-world-baseline/hello-world-baseline-spec.md"
     summary: "Feature specification with goals, acceptance criteria, clarifications"
@@ -46,3 +53,7 @@ files:
   - path: "009-url-routing/url-routing-plan.md"
     summary: "Simple mode implementation plan with 9 tasks for URL session state"
     keywords: [plan, tasks, implementation, url, sessions]
+
+  - path: "010-github-oauth/research-dossier.md"
+    summary: "Research synthesis for GitHub OAuth integration with architecture analysis"
+    keywords: [research, oauth, github, authentication, websocket, jwt]

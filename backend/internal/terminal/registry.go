@@ -78,6 +78,29 @@ func (r *SessionRegistry) List() []*Session {
 	return sessions
 }
 
+// ListByOwner returns sessions owned by the given username.
+// If owner is empty, returns all sessions (for backward compat when auth disabled).
+func (r *SessionRegistry) ListByOwner(owner string) []*Session {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	if owner == "" {
+		sessions := make([]*Session, 0, len(r.sessions))
+		for _, s := range r.sessions {
+			sessions = append(sessions, s)
+		}
+		return sessions
+	}
+
+	sessions := make([]*Session, 0)
+	for _, s := range r.sessions {
+		if s.Owner == owner {
+			sessions = append(sessions, s)
+		}
+	}
+	return sessions
+}
+
 // Count returns the number of sessions in the registry.
 func (r *SessionRegistry) Count() int {
 	r.mu.RLock()
@@ -92,6 +115,7 @@ type SessionInfo struct {
 	ShellType string        `json:"shellType"`
 	Status    SessionStatus `json:"status"`
 	CreatedAt time.Time     `json:"createdAt"`
+	Owner     string        `json:"owner,omitempty"`
 }
 
 // Info returns the session metadata suitable for API responses.
@@ -102,5 +126,6 @@ func (s *Session) Info() SessionInfo {
 		ShellType: s.ShellType,
 		Status:    s.Status,
 		CreatedAt: s.CreatedAt,
+		Owner:     s.Owner,
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/vaughanknight/trex/internal/config"
 	"github.com/vaughanknight/trex/internal/server"
 )
 
@@ -17,15 +18,24 @@ var Version = "dev"
 func main() {
 	fmt.Printf("trex %s\n", Version)
 
-	srv := server.New(Version)
+	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("Configuration error: %v", err)
+	}
+
+	srv := server.New(Version, cfg)
 
 	// Handle graceful shutdown
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		fmt.Println("Server starting at http://127.0.0.1:3000")
-		if err := http.ListenAndServe("127.0.0.1:3000", srv); err != nil && err != http.ErrServerClosed {
+		authStatus := ""
+		if cfg.AuthEnabled {
+			authStatus = " (auth enabled)"
+		}
+		fmt.Printf("Server starting at http://%s%s\n", cfg.BindAddress, authStatus)
+		if err := http.ListenAndServe(cfg.BindAddress, srv); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}
 	}()

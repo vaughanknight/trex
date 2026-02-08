@@ -123,10 +123,10 @@ export function getWebglAddonFactory(): WebglAddonFactory {
   if (!defaultFactory) {
     // Lazy initialization of default factory
     defaultFactory = () => {
-      // Dynamic import to handle cases where WebglAddon isn't available
+      // Dynamic require to handle cases where WebglAddon isn't available
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { WebglAddon } = require('@xterm/addon-webgl')
-      return new WebglAddon() as IWebglAddon
+      const mod = Function('return require("@xterm/addon-webgl")')() as { WebglAddon: new () => IWebglAddon }
+      return new mod.WebglAddon() as IWebglAddon
     }
   }
   return defaultFactory

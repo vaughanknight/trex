@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
+	"github.com/vaughanknight/trex/internal/auth"
 	"github.com/vaughanknight/trex/internal/terminal"
 )
 
@@ -29,6 +30,7 @@ type connectionHandler struct {
 	sessions map[string]*terminal.Session // sessions active on this connection
 	mu       sync.Mutex                   // protects sessions map
 	writeMu  sync.Mutex                   // protects WebSocket writes
+	authUser *auth.GitHubUser             // authenticated user (nil when auth disabled)
 }
 
 // newConnectionHandler creates a handler for a WebSocket connection.
@@ -43,6 +45,10 @@ func newConnectionHandler(conn *websocket.Conn, registry *terminal.SessionRegist
 // handleTerminal handles WebSocket connections for terminal sessions.
 func (s *Server) handleTerminal() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Extract authenticated user from context (set by auth middleware).
+		// Will be nil when auth is disabled.
+		user := auth.UserFromContext(r.Context())
+
 		// Upgrade HTTP connection to WebSocket
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
@@ -51,9 +57,14 @@ func (s *Server) handleTerminal() http.HandlerFunc {
 		}
 
 		handler := newConnectionHandler(conn, s.registry)
+		handler.authUser = user
 		defer handler.cleanup()
 
-		log.Printf("WebSocket connection established")
+		if user != nil {
+			log.Printf("WebSocket connection established (user: %s)", user.Username)
+		} else {
+			log.Printf("WebSocket connection established")
+		}
 		handler.run()
 		log.Printf("WebSocket connection closed")
 	}
@@ -150,6 +161,9 @@ func (h *connectionHandler) handleCreate() {
 	session.Name = shellType + "-" + sessionID[1:] // e.g., "bash-1" from "s1"
 	session.ShellType = shellType
 	session.Status = terminal.SessionStatusActive
+	if h.authUser != nil {
+		session.Owner = h.authUser.Username
+	}
 
 	// Add to registry and local map
 	h.registry.Add(session)

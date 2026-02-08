@@ -5,10 +5,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/vaughanknight/trex/internal/config"
 )
 
 func TestHandleHealth(t *testing.T) {
-	srv := New("1.0.0-test")
+	srv := New("1.0.0-test", config.Load())
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	w := httptest.NewRecorder()
@@ -39,7 +41,7 @@ func TestHandleHealth(t *testing.T) {
 }
 
 func TestHandleHealthMethodNotAllowed(t *testing.T) {
-	srv := New("1.0.0-test")
+	srv := New("1.0.0-test", config.Load())
 
 	req := httptest.NewRequest(http.MethodPost, "/api/health", nil)
 	w := httptest.NewRecorder()

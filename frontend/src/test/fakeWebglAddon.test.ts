@@ -3,7 +3,7 @@
  * Ensures the fake behaves correctly for pool testing.
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, afterEach } from 'vitest'
 import {
   FakeWebglAddon,
   installFakeWebglAddon,

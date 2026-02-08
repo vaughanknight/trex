@@ -55,6 +55,10 @@ export interface SettingsState {
   idleThresholds: IdleThresholds
   /** Feature flag to enable/disable idle indicators */
   idleIndicatorsEnabled: boolean
+  /** Always prompt before creating sessions from URL params */
+  urlConfirmAlways: boolean
+  /** Prompt if URL requests more than this many sessions (0-50) */
+  urlConfirmThreshold: number
 }
 
 export interface SettingsActions {
@@ -66,6 +70,10 @@ export interface SettingsActions {
   setIdleThresholds: (thresholds: IdleThresholds) => void
   /** Toggle idle indicators on/off */
   setIdleIndicatorsEnabled: (enabled: boolean) => void
+  /** Set whether to always confirm before opening URL sessions */
+  setUrlConfirmAlways: (always: boolean) => void
+  /** Set session count threshold for URL confirmation (clamped 0-50) */
+  setUrlConfirmThreshold: (threshold: number) => void
   reset: () => void
 }
 
@@ -78,6 +86,8 @@ const defaultSettings: SettingsState = {
   autoOpenTerminal: false,
   idleThresholds: { ...DEFAULT_THRESHOLDS },
   idleIndicatorsEnabled: true,
+  urlConfirmAlways: false,
+  urlConfirmThreshold: 5,
 }
 
 /** Minimum threshold value in milliseconds (1 second) */
@@ -124,6 +134,12 @@ export const useSettingsStore = create<SettingsStore>()(
 
       setIdleIndicatorsEnabled: (idleIndicatorsEnabled) => set({ idleIndicatorsEnabled }),
 
+      setUrlConfirmAlways: (urlConfirmAlways) => set({ urlConfirmAlways }),
+
+      setUrlConfirmThreshold: (threshold) => set({
+        urlConfirmThreshold: Math.max(0, Math.min(50, threshold)),
+      }),
+
       reset: () => set(defaultSettings),
     }),
     {
@@ -150,6 +166,8 @@ export const selectFontFamily = (state: SettingsStore) => state.fontFamily
 export const selectAutoOpenTerminal = (state: SettingsStore) => state.autoOpenTerminal
 export const selectIdleThresholds = (state: SettingsStore) => state.idleThresholds
 export const selectIdleIndicatorsEnabled = (state: SettingsStore) => state.idleIndicatorsEnabled
+export const selectUrlConfirmAlways = (state: SettingsStore) => state.urlConfirmAlways
+export const selectUrlConfirmThreshold = (state: SettingsStore) => state.urlConfirmThreshold
 
 // Re-export IdleThresholds type for consumers
 export type { IdleThresholds }

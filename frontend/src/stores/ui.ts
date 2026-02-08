@@ -38,7 +38,7 @@ const initialState: UIState = {
   activeSessionId: null,
   settingsPanelOpen: false,
   sidebarCollapsed: false,
-  sidebarPinned: false,
+  sidebarPinned: true,
 }
 
 export const useUIStore = create<UIStore>()(

@@ -30,4 +30,5 @@ const (
 	// Multi-session message types
 	MsgTypeCreate         = "create"          // Client requests new session
 	MsgTypeSessionCreated = "session_created" // Server confirms session created
+	MsgTypeClose          = "close"           // Client requests session termination
 )

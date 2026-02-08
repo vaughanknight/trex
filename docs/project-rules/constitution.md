@@ -1,8 +1,8 @@
 # trex Project Constitution
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Ratified**: 2026-02-04
-**Last Amended**: 2026-02-04
+**Last Amended**: 2026-02-05
 **Status**: RATIFIED
 
 ---
@@ -473,6 +473,76 @@ Promoted tests require Test Doc blocks with 5 fields:
 
 ---
 
+## Agent Workflow Status
+
+### Terminal Title Convention
+
+LLM agents working on this project MUST update the terminal title to reflect current work status. This provides at-a-glance visibility across multiple terminal sessions.
+
+**Configuration**: `.config/project.json` contains project abbreviation and name.
+
+**Scripts**:
+- `scripts/project_title.sh` - Returns project abbreviation (auto-creates config if missing)
+- `scripts/set_title.sh` - Sets terminal title with proper formatting
+
+### Title States
+
+| State | Format | Example |
+|-------|--------|---------|
+| **Idle** | `{project name}` | `trex` |
+| **Active work** | `{AB}-{ord}:P{x}/{y}:T{n}/{m}` | `TR-008:P2/3:T3/25` |
+| **Active (simple mode)** | `{AB}-{ord}:T{n}/{m}` | `TR-008:T3/9` |
+| **Active (subtask)** | `...T{n}/{m}:S{a}/{b}` | `TR-008:P2/3:T5/25:S2/4` |
+| **Waiting for input** | `? {active format}` | `? TR-008:P2/3:T3/25` |
+| **Phase complete** | `→ {AB}-{ord}:P{next}/{y}` | `→ TR-008:P3/3` |
+| **Plan complete** | `✓ {AB}-{ord}-{slug}` | `✓ TR-008-dynamic-session-titles` |
+
+### Title Format Components
+
+- `{AB}` - 2-letter project abbreviation from config (e.g., `TR`)
+- `{ord}` - Plan ordinal number (e.g., `008`)
+- `P{x}/{y}` - Phase x of y total phases
+- `T{n}/{m}` - Task n of m total tasks
+- `S{a}/{b}` - Subtask a of b total subtasks
+
+### When to Update Title
+
+| Event | Action |
+|-------|--------|
+| Starting work on a plan | Set to working state with plan/phase/task |
+| Moving to next task | Update task counter |
+| Completing a phase | Set `→` prefix, show next phase |
+| Completing a plan | Set `✓` prefix with full plan slug |
+| Waiting for user input | Set `?` prefix (any pause for input) |
+| User responds | Remove `?` prefix, continue working state |
+| All work complete | Set to idle (project name only) |
+
+### Script Usage
+
+```bash
+# Get project abbreviation
+./scripts/project_title.sh abbrev    # Returns: TR
+
+# Set working status
+./scripts/set_title.sh working 008 P2/3 T3/25       # TR-008:P2/3:T3/25
+./scripts/set_title.sh working 008 P2/3 T5/25 S2/4  # TR-008:P2/3:T5/25:S2/4
+./scripts/set_title.sh working 008 T3/9             # TR-008:T3/9 (simple mode)
+
+# Set waiting status (any user input required)
+./scripts/set_title.sh waiting 008 P2/3 T3/25       # ? TR-008:P2/3:T3/25
+
+# Set phase complete
+./scripts/set_title.sh phase-done 008 P3/3          # → TR-008:P3/3
+
+# Set plan complete
+./scripts/set_title.sh plan-done 008-dynamic-session-titles  # ✓ TR-008-dynamic-session-titles
+
+# Set idle
+./scripts/set_title.sh idle                         # trex
+```
+
+---
+
 ## Complexity Estimation
 
 ### CS 1-5 System (Strictly Adopted)
@@ -604,6 +674,14 @@ Promoted tests require Test Doc blocks with 5 fields:
 ---
 
 ## Changelog
+
+### v1.2.0 (2026-02-05)
+
+- **Agent Workflow Status**: Added terminal title convention for LLM agents
+  - Agents must update terminal title to reflect current work status
+  - Provides at-a-glance visibility: working, waiting, phase complete, plan complete
+  - Scripts: `scripts/project_title.sh`, `scripts/set_title.sh`
+  - Config: `.config/project.json` for project abbreviation
 
 ### v1.1.0 (2026-02-04)
 

@@ -3,10 +3,10 @@
  */
 
 /** Message types sent from client to server */
-export type ClientMessageType = 'input' | 'resize'
+export type ClientMessageType = 'input' | 'resize' | 'create' | 'close'
 
 /** Message types sent from server to client */
-export type ServerMessageType = 'output' | 'error' | 'exit'
+export type ServerMessageType = 'output' | 'error' | 'exit' | 'session_created'
 
 /** Message sent from browser to server */
 export interface ClientMessage {

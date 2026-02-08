@@ -10,6 +10,7 @@ import { ThemeSelector } from './ThemeSelector'
 import { FontSelector } from './FontSelector'
 import { FontSizeSlider } from './FontSizeSlider'
 import { IdleThresholdSettings } from './IdleThresholdSettings'
+import { URLSessionSettings } from './URLSessionSettings'
 
 interface SettingsPanelProps {
   open: boolean
@@ -58,6 +59,11 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         {/* Idle Indicators */}
         <div className="space-y-2">
           <IdleThresholdSettings />
+        </div>
+
+        {/* URL Sessions */}
+        <div className="space-y-2">
+          <URLSessionSettings />
         </div>
       </div>
     </div>

@@ -87,6 +87,9 @@ func (h *connectionHandler) handleMessage(msg *terminal.ClientMessage) {
 	case terminal.MsgTypeCreate:
 		h.handleCreate()
 
+	case terminal.MsgTypeClose:
+		h.handleClose(msg)
+
 	case terminal.MsgTypeInput:
 		h.handleInput(msg)
 
@@ -96,6 +99,30 @@ func (h *connectionHandler) handleMessage(msg *terminal.ClientMessage) {
 	default:
 		log.Printf("Unknown message type: %s", msg.Type)
 	}
+}
+
+// handleClose closes a specific terminal session.
+func (h *connectionHandler) handleClose(msg *terminal.ClientMessage) {
+	session := h.getSession(msg.SessionId)
+	if session == nil {
+		h.sendError(msg.SessionId, "session not found")
+		return
+	}
+
+	log.Printf("Closing session %s", session.ID)
+
+	// Remove from local map
+	h.mu.Lock()
+	delete(h.sessions, msg.SessionId)
+	h.mu.Unlock()
+
+	// Close session gracefully
+	session.CloseGracefully()
+
+	// Remove from registry
+	h.registry.Delete(msg.SessionId)
+
+	log.Printf("Session %s closed", msg.SessionId)
 }
 
 // handleCreate creates a new terminal session.

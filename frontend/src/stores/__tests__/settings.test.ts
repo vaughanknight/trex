@@ -45,6 +45,8 @@ const createTestSettingsStore = (storage: FakeStorage) => {
     autoOpenTerminal: false,
     idleThresholds: { ...DEFAULT_THRESHOLDS },
     idleIndicatorsEnabled: true,
+    urlConfirmAlways: false,
+    urlConfirmThreshold: 5,
   }
 
   return create<SettingsState & SettingsActions>()(
@@ -59,6 +61,10 @@ const createTestSettingsStore = (storage: FakeStorage) => {
           idleThresholds: validateThresholds(thresholds),
         }),
         setIdleIndicatorsEnabled: (idleIndicatorsEnabled: boolean) => set({ idleIndicatorsEnabled }),
+        setUrlConfirmAlways: (urlConfirmAlways: boolean) => set({ urlConfirmAlways }),
+        setUrlConfirmThreshold: (threshold: number) => set({
+          urlConfirmThreshold: Math.max(0, Math.min(50, threshold)),
+        }),
         reset: () => set(defaultSettings),
       }),
       {

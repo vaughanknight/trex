@@ -19,6 +19,13 @@ directories:
     complexity: CS-2
     issue: 13
 
+  - path: "009-url-routing/"
+    summary: "URL-based session state for shareable/bookmarkable terminal workspaces"
+    keywords: [url, routing, state, sharing, bookmarks, sessions]
+    status: planned
+    complexity: CS-2
+    issue: 27
+
 files:
   - path: "001-hello-world-baseline/hello-world-baseline-spec.md"
     summary: "Feature specification with goals, acceptance criteria, clarifications"
@@ -27,3 +34,15 @@ files:
   - path: "001-hello-world-baseline/hello-world-baseline-plan.md"
     summary: "Implementation plan with 25 tasks, research findings, task dependencies"
     keywords: [plan, tasks, implementation, research]
+
+  - path: "009-url-routing/research-dossier.md"
+    summary: "Research synthesis from 7 investigation tracks on URL state management"
+    keywords: [research, url, zustand, vite, next.js, routing]
+
+  - path: "009-url-routing/url-routing-spec.md"
+    summary: "Feature specification for URL-based session state sharing"
+    keywords: [spec, url, sessions, bookmarks, sharing]
+
+  - path: "009-url-routing/url-routing-plan.md"
+    summary: "Simple mode implementation plan with 9 tasks for URL session state"
+    keywords: [plan, tasks, implementation, url, sessions]

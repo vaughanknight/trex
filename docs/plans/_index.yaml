@@ -29,7 +29,7 @@ directories:
   - path: "010-github-oauth/"
     summary: "GitHub OAuth authentication for secure remote access with user allowlist"
     keywords: [oauth, github, authentication, security, remote-access, authorization]
-    status: specified
+    status: planned
     complexity: CS-4
     issue: 28
 
@@ -61,3 +61,7 @@ files:
   - path: "010-github-oauth/github-oauth-spec.md"
     summary: "Feature specification for GitHub OAuth with acceptance criteria and complexity analysis"
     keywords: [spec, oauth, github, authentication, security, remote-access]
+
+  - path: "010-github-oauth/github-oauth-plan.md"
+    summary: "7-phase implementation plan for GitHub OAuth with TDD tasks and risk mitigations"
+    keywords: [plan, oauth, github, authentication, tdd, phases, tasks]

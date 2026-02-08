@@ -3,6 +3,7 @@
 **Version**: 1.0.0
 **Created**: 2026-02-09
 **Status**: DRAFT
+**Mode**: Full
 
 📚 This specification incorporates findings from `research-dossier.md`
 
@@ -147,11 +148,12 @@ Consider running `/deepresearch` prompts before finalizing architecture.
 **Then** the JWT token is validated before upgrade
 **And** unauthenticated WebSocket attempts are rejected
 
-### AC-05: Session Ownership
+### AC-05: Session Isolation
 **Given** an authenticated user creates terminal sessions
 **When** viewing the session list
-**Then** sessions show which user created them
-**And** users can only close their own sessions [NEEDS CLARIFICATION: or can all users close any session?]
+**Then** they only see sessions they created (not other users' sessions)
+**And** they can only close their own sessions
+**And** the session registry filters results by authenticated user
 
 ### AC-06: Logout Flow
 **Given** an authenticated user
@@ -211,17 +213,17 @@ Consider running `/deepresearch` prompts before finalizing architecture.
 
 ## Open Questions
 
-1. **Session ownership enforcement**: Can users close other users' sessions, or only their own?
+1. ~~**Session ownership enforcement**~~: **RESOLVED** - Users can only see and close their own sessions (strict isolation)
 
-2. **Token storage mechanism**: httpOnly cookies vs localStorage - which is better for this use case? [NEEDS CLARIFICATION: Research opportunity identified]
+2. **Token storage mechanism**: httpOnly cookies vs localStorage - defer to ADR during architecture phase
 
-3. **Token refresh**: Should we implement refresh tokens for long-lived sessions, or require periodic re-authentication?
+3. ~~**Token refresh**~~: **RESOLVED** - Refresh tokens with silent renewal for uninterrupted work
 
-4. **Electron callback handling**: What's the best pattern - deep links, local HTTP server, or custom protocol? [NEEDS CLARIFICATION: Research opportunity identified]
+4. **Electron callback handling**: What's the best pattern - deep links, local HTTP server, or custom protocol? (Research opportunity)
 
-5. **Allowlist storage**: Environment variable (comma-separated) vs config file? What about dynamic updates without restart?
+5. ~~**Allowlist storage**~~: **RESOLVED** - Config file (`~/.config/trex/allowed_users.json`) with hot reload
 
-6. **Health endpoint**: Should `/api/health` require authentication or remain public for monitoring?
+6. **Health endpoint**: Should `/api/health` require authentication or remain public for monitoring? (Defer to implementation)
 
 ---
 
@@ -269,6 +271,88 @@ Consider running `/deepresearch` prompts before finalizing architecture.
 
 ---
 
+## Testing Strategy
+
+**Approach**: Full TDD
+**Rationale**: Security-critical OAuth feature requires comprehensive test coverage before implementation. Token handling, CSRF protection, and session management must be thoroughly tested.
+
+**Focus Areas**:
+- OAuth flow (authorization, callback, token exchange)
+- JWT validation and expiration handling
+- Allowlist enforcement
+- WebSocket authentication
+- Refresh token silent renewal
+- Session isolation (user can only see/close own sessions)
+
+**Excluded**:
+- Visual/cosmetic UI testing (manual verification acceptable)
+- GitHub API internals (external service)
+
+**Mock Usage**: Fakes Only (per ADR-0004)
+- FakeOAuthProvider: In-memory OAuth server for unit tests
+- FakeGitHubAPI: Simulates GitHub user info endpoint
+- FakeJWT: Predictable token generation
+- Integration tests use real GitHub OAuth with test app
+
+---
+
+## Documentation Strategy
+
+**Location**: Hybrid (README.md + docs/how/)
+
+**README.md Content**:
+- Quick setup: environment variables, OAuth app creation
+- Basic usage: enabling auth, first login
+- Allowlist configuration
+
+**docs/how/ Content**:
+- `docs/how/authentication.md`: Detailed OAuth flow, security model
+- `docs/how/oauth-setup.md`: Step-by-step GitHub OAuth App creation
+- `docs/how/troubleshooting-auth.md`: Common issues and solutions
+
+**Target Audience**: Machine owners setting up remote access, developers extending auth
+
+**Maintenance**: Update docs when auth flow changes; test setup instructions on fresh install
+
+---
+
+## Clarifications
+
+### Session 2026-02-09
+
+**Q1: Workflow Mode**
+- **Answer**: Full Mode
+- **Rationale**: CS-4 security feature with 7 phases requires comprehensive gates and multi-phase plan
+
+**Q2: Testing Approach**
+- **Answer**: Full TDD
+- **Rationale**: Security-critical OAuth requires comprehensive unit/integration/e2e tests before implementation
+
+**Q3: Mock Policy**
+- **Answer**: Fakes Only (per ADR-0004)
+- **Rationale**: Continue existing project policy with FakeOAuthProvider, FakeGitHubAPI implementations
+
+**Q4: Documentation Strategy**
+- **Answer**: Hybrid (README + docs/how/)
+- **Rationale**: Quick setup in README, detailed security/troubleshooting guides in docs/how/
+
+**Q5: Session Ownership**
+- **Answer**: Users can only see and close their own sessions
+- **Rationale**: Strict session isolation - each user has their own isolated view of sessions
+- **Impact**: Updated AC-05, session registry must filter by authenticated user
+
+**Q6: Token Refresh**
+- **Answer**: Refresh tokens with silent renewal
+- **Rationale**: Users work uninterrupted during long terminal sessions; tokens still rotate frequently for security
+- **Impact**: Implementation requires refresh token endpoint, silent token renewal in frontend
+
+**Q7: Allowlist Storage**
+- **Answer**: Config file with hot reload
+- **Rationale**: File at `~/.config/trex/allowed_users.json` with automatic reload when changed
+- **Impact**: No restart needed to add/remove users; file watcher required in backend
+
+---
+
 ## Related Documents
 
 - Research Dossier: `docs/plans/010-github-oauth/research-dossier.md`
@@ -279,7 +363,7 @@ Consider running `/deepresearch` prompts before finalizing architecture.
 ---
 
 **Next Steps**:
-1. Update constitution to support authentication (v1.3.0)
-2. Run `/plan-2-clarify` for ≤5 high-impact questions
+1. ~~Update constitution to support authentication (v1.3.0)~~ ✅ Done
+2. ~~Run `/plan-2-clarify` for ≤5 high-impact questions~~ ✅ Done (7 questions answered)
 3. Optionally run `/deepresearch` for unresolved research topics
 4. Run `/plan-3-architect` to create implementation plan

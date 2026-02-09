@@ -21,7 +21,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   if (!open) return null
 
   return (
-    <div className="bg-sidebar border-r h-full w-80 flex-shrink-0 flex flex-col">
+    <div className="bg-sidebar border-r h-svh w-80 flex-shrink-0 flex flex-col">
       {/* Header with title and X button */}
       <div className="flex items-center justify-between p-4 border-b">
         <div>

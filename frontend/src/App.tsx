@@ -4,6 +4,7 @@ import { SessionSidebar } from './components/SessionSidebar'
 import { SettingsPanel } from './components/SettingsPanel'
 import { EmptyState } from './components/EmptyState'
 import { TerminalContainer } from './components/TerminalContainer'
+import { LoginPage } from './components/LoginPage'
 import { ThemePreviewProvider } from './contexts/ThemePreviewContext'
 import { useSessionStore, selectSessionCount } from './stores/sessions'
 import { useUIStore, selectActiveSessionId, selectSidebarCollapsed, selectSettingsPanelOpen } from './stores/ui'
@@ -28,6 +29,11 @@ function App() {
   // When auth is enabled and still loading, show nothing to avoid flash
   const needsLogin = authEnabled === true && !user && !authLoading
 
+  // Show login page before any app chrome (no sidebar, no settings panel)
+  if (needsLogin) {
+    return <LoginPage />
+  }
+
   // Show empty state when no sessions exist or no active session selected
   const showEmptyState = sessionCount === 0 || !activeSessionId
 
@@ -50,20 +56,7 @@ function App() {
         <SessionSidebar />
         <SettingsPanel open={settingsPanelOpen} onClose={closeSettings} />
         <SidebarInset className="app">
-          {needsLogin ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center space-y-4">
-                <h2 className="text-xl font-semibold text-foreground">Authentication Required</h2>
-                <p className="text-muted-foreground">Login with GitHub to access terminal sessions.</p>
-                <button
-                  onClick={() => { window.location.href = '/auth/github' }}
-                  className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-                >
-                  Login with GitHub
-                </button>
-              </div>
-            </div>
-          ) : showEmptyState ? (
+          {showEmptyState ? (
             <EmptyState />
           ) : (
             <TerminalContainer />

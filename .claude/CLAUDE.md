@@ -61,6 +61,20 @@ Add the `?` prefix whenever you stop and wait for user input, including:
 
 Remove the `?` as soon as the user responds and you resume work.
 
+## Pre-Push CI Check (REQUIRED)
+
+You MUST run the full build locally before pushing to ensure CI will pass. Do NOT rely on `tsc --noEmit` alone — it is less strict than `tsc -b` and misses errors like unused imports (TS6196).
+
+```bash
+# Frontend (same command as CI)
+cd frontend && npm run build
+
+# Backend
+cd backend && go test ./...
+```
+
+Run both before every push. If either fails, fix the issue before pushing.
+
 ## Project Configuration
 
 The project config lives at `.config/project.json`:

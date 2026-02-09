@@ -11,9 +11,17 @@ import { useUIStore, selectActiveSessionId, selectSidebarCollapsed, selectSettin
 import { useAuthStore, selectAuthEnabled, selectUser, selectAuthLoading } from './stores/auth'
 import { useURLSync } from './hooks/useURLSync'
 import { useAuthInit } from './hooks/useAuthInit'
+import { useAppTheme, useAppThemePreview } from './hooks/useAppTheme'
 import { ConfirmSessionsDialog } from './components/ConfirmSessionsDialog'
 
+/** Syncs theme preview (hover in ThemeSelector) to CSS variables. Must be inside ThemePreviewProvider. */
+function AppThemePreview() {
+  useAppThemePreview()
+  return null
+}
+
 function App() {
+  useAppTheme()
   const sessionCount = useSessionStore(selectSessionCount)
   const activeSessionId = useUIStore(selectActiveSessionId)
   const sidebarCollapsed = useUIStore(selectSidebarCollapsed)
@@ -49,6 +57,7 @@ function App() {
         />
       )}
       <ThemePreviewProvider>
+      <AppThemePreview />
       <SidebarProvider
         open={!sidebarCollapsed}
         onOpenChange={(open) => setSidebarCollapsed(!open)}

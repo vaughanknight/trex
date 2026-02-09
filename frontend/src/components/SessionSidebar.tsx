@@ -70,10 +70,10 @@ export function SessionSidebar() {
             <AuthButton />
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <ToggleButton />
+            <SettingsButton />
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SettingsButton />
+            <ToggleButton />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

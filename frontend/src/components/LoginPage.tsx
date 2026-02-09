@@ -8,6 +8,8 @@
  */
 
 import { useRef, useEffect, useState, useMemo } from 'react'
+import { useSettingsStore, selectTheme } from '@/stores/settings'
+import { getThemeById } from '@/themes'
 
 const PATTERN = 'TREX'
 
@@ -111,6 +113,11 @@ const MASK_WIDTH = MASK_HIGHLIGHT[0].length
 type SpanType = 'dim' | 'highlight' | 'blink'
 
 export function LoginPage() {
+  const themeId = useSettingsStore(selectTheme)
+  const theme = getThemeById(themeId)
+  const bg = theme.background ?? '#1e1e1e'
+  const fg = theme.foreground ?? '#d4d4d4'
+
   const containerRef = useRef<HTMLDivElement>(null)
   const [dims, setDims] = useState<{ cols: number; rows: number; charW: number; charH: number }>({
     cols: 0, rows: 0, charW: 0, charH: 0,
@@ -180,19 +187,23 @@ export function LoginPage() {
     })
   }, [dims.cols, dims.rows, maskStartCol, maskStartRow])
 
-  const spanClass: Record<SpanType, string> = {
-    dim: 'text-foreground/10',
-    highlight: 'text-foreground font-bold',
-    blink: 'text-foreground font-bold animate-blink-cursor',
+  const spanStyle: Record<SpanType, React.CSSProperties> = {
+    dim: { color: fg, opacity: 0.1 },
+    highlight: { color: fg, fontWeight: 'bold' },
+    blink: { color: fg, fontWeight: 'bold' },
   }
 
   return (
-    <div ref={containerRef} className="relative h-svh w-full bg-background overflow-hidden select-none">
+    <div ref={containerRef} className="relative h-svh w-full overflow-hidden select-none" style={{ backgroundColor: bg }}>
       <div className="absolute inset-0 font-mono text-sm whitespace-pre" style={{ lineHeight: 1 }} aria-hidden="true">
         {gridRows.map((spans, row) => (
           <div key={row}>
             {spans.map((span, i) => (
-              <span key={i} className={spanClass[span.type]}>
+              <span
+                key={i}
+                className={span.type === 'blink' ? 'animate-blink-cursor' : undefined}
+                style={spanStyle[span.type]}
+              >
                 {span.text}
               </span>
             ))}
@@ -204,7 +215,8 @@ export function LoginPage() {
         <div style={{ height: dims.charH * MASK_HEIGHT }} />
         <button
           onClick={() => { window.location.href = '/auth/github' }}
-          className="pointer-events-auto mt-26 px-6 py-3 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm font-medium shadow-lg"
+          className="pointer-events-auto mt-26 px-6 py-3 rounded-md text-sm font-medium shadow-lg"
+          style={{ backgroundColor: fg, color: bg }}
         >
           Login with GitHub
         </button>

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"net/http"
+	"strings"
 )
 
 // contextKey is a private type for context keys in this package.
@@ -66,6 +67,7 @@ func Middleware(jwtService *JWTService, authEnabled bool) func(http.Handler) htt
 }
 
 // isPublicPath returns true for paths that don't require authentication.
+// Static assets must be public so the SPA can load the login page.
 func isPublicPath(path string) bool {
 	switch {
 	case path == "/api/health":
@@ -76,7 +78,23 @@ func isPublicPath(path string) bool {
 		return true
 	case path == "/":
 		return true
+	case isStaticAsset(path):
+		return true
 	default:
 		return false
 	}
+}
+
+// isStaticAsset returns true for frontend static asset paths.
+func isStaticAsset(path string) bool {
+	if strings.HasPrefix(path, "/assets/") {
+		return true
+	}
+	// Common static file extensions served by the SPA
+	for _, ext := range []string{".js", ".css", ".svg", ".png", ".ico", ".woff", ".woff2"} {
+		if strings.HasSuffix(path, ext) {
+			return true
+		}
+	}
+	return false
 }

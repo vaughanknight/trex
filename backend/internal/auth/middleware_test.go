@@ -119,7 +119,7 @@ func TestMiddleware_AllowsPublicPaths(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	publicPaths := []string{"/api/health", "/auth/github", "/auth/callback", "/api/auth/enabled", "/"}
+	publicPaths := []string{"/api/health", "/auth/github", "/auth/callback", "/api/auth/enabled", "/", "/assets/index-abc123.js", "/assets/index-abc123.css", "/vite.svg", "/favicon.ico"}
 	for _, path := range publicPaths {
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, path, nil)

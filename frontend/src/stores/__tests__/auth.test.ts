@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { create } from 'zustand'
-import type { AuthState, AuthActions, AuthUser } from '../auth'
+import type { AuthState, AuthActions } from '../auth'
 
 type AuthStore = AuthState & AuthActions
 

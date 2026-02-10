@@ -11,6 +11,7 @@ import { FontSelector } from './FontSelector'
 import { FontSizeSlider } from './FontSizeSlider'
 import { IdleThresholdSettings } from './IdleThresholdSettings'
 import { URLSessionSettings } from './URLSessionSettings'
+import { TmuxSettings } from './TmuxSettings'
 
 interface SettingsPanelProps {
   open: boolean
@@ -64,6 +65,11 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         {/* URL Sessions */}
         <div className="space-y-2">
           <URLSessionSettings />
+        </div>
+
+        {/* tmux Detection */}
+        <div className="space-y-2">
+          <TmuxSettings />
         </div>
       </div>
     </div>

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/vaughanknight/trex/internal/auth"
@@ -27,6 +28,7 @@ var upgrader = websocket.Upgrader{
 type connectionHandler struct {
 	conn     *websocket.Conn
 	registry *terminal.SessionRegistry
+	server   *Server                      // back-reference for monitor control
 	sessions map[string]*terminal.Session // sessions active on this connection
 	mu       sync.Mutex                   // protects sessions map
 	writeMu  sync.Mutex                   // protects WebSocket writes
@@ -34,10 +36,11 @@ type connectionHandler struct {
 }
 
 // newConnectionHandler creates a handler for a WebSocket connection.
-func newConnectionHandler(conn *websocket.Conn, registry *terminal.SessionRegistry) *connectionHandler {
+func newConnectionHandler(conn *websocket.Conn, registry *terminal.SessionRegistry, server *Server) *connectionHandler {
 	return &connectionHandler{
 		conn:     conn,
 		registry: registry,
+		server:   server,
 		sessions: make(map[string]*terminal.Session),
 	}
 }
@@ -56,7 +59,7 @@ func (s *Server) handleTerminal() http.HandlerFunc {
 			return
 		}
 
-		handler := newConnectionHandler(conn, s.registry)
+		handler := newConnectionHandler(conn, s.registry, s)
 		handler.authUser = user
 		defer handler.cleanup()
 
@@ -106,6 +109,9 @@ func (h *connectionHandler) handleMessage(msg *terminal.ClientMessage) {
 
 	case terminal.MsgTypeResize:
 		h.handleResize(msg)
+
+	case terminal.MsgTypeTmuxConfig:
+		h.handleTmuxConfig(msg)
 
 	default:
 		log.Printf("Unknown message type: %s", msg.Type)
@@ -161,6 +167,7 @@ func (h *connectionHandler) handleCreate() {
 	session.Name = shellType + "-" + sessionID[1:] // e.g., "bash-1" from "s1"
 	session.ShellType = shellType
 	session.Status = terminal.SessionStatusActive
+	session.TtyPath = pty.TtyPath
 	if h.authUser != nil {
 		session.Owner = h.authUser.Username
 	}
@@ -211,6 +218,24 @@ func (h *connectionHandler) handleResize(msg *terminal.ClientMessage) {
 	}
 
 	session.Resize(msg.Cols, msg.Rows)
+}
+
+// handleTmuxConfig updates the tmux polling interval from frontend settings.
+func (h *connectionHandler) handleTmuxConfig(msg *terminal.ClientMessage) {
+	if msg.Interval <= 0 {
+		return
+	}
+	d := time.Duration(msg.Interval) * time.Millisecond
+	// Clamp to valid range
+	if d < 500*time.Millisecond {
+		d = 500 * time.Millisecond
+	}
+	if d > 30*time.Second {
+		d = 30 * time.Second
+	}
+	if h.server != nil && h.server.monitor != nil {
+		h.server.monitor.UpdateInterval(d)
+	}
 }
 
 // getSession retrieves a session by ID, checking both local map and registry.

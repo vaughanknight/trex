@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 // Config holds all server configuration loaded from environment variables.
@@ -37,6 +38,10 @@ type Config struct {
 	// AllowlistPath is the path to the allowed_users.json file.
 	// Defaults to ~/.config/trex/allowed_users.json (per ADR-0006).
 	AllowlistPath string
+
+	// TmuxPollInterval is how often the tmux monitor polls for client changes.
+	// Read from TREX_TMUX_POLL_INTERVAL env var (default "2s"). Range: 500ms–30s.
+	TmuxPollInterval time.Duration
 }
 
 // Load reads configuration from TREX_* environment variables and returns
@@ -61,6 +66,8 @@ func Load() *Config {
 		}
 	}
 
+	tmuxPollInterval := parseDuration(os.Getenv("TREX_TMUX_POLL_INTERVAL"), 2*time.Second, 500*time.Millisecond, 30*time.Second)
+
 	return &Config{
 		BindAddress:        bindAddress,
 		AuthEnabled:        authEnabled,
@@ -69,6 +76,7 @@ func Load() *Config {
 		GitHubCallbackURL:  os.Getenv("TREX_GITHUB_CALLBACK_URL"),
 		JWTSecret:          os.Getenv("TREX_JWT_SECRET"),
 		AllowlistPath:      allowlistPath,
+		TmuxPollInterval:   tmuxPollInterval,
 	}
 }
 
@@ -99,6 +107,26 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// parseDuration parses a duration string, clamping to [min, max] range.
+// Returns defaultVal if the string is empty or unparseable.
+func parseDuration(s string, defaultVal, min, max time.Duration) time.Duration {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return defaultVal
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return defaultVal
+	}
+	if d < min {
+		return min
+	}
+	if d > max {
+		return max
+	}
+	return d
 }
 
 // parseBool parses common boolean string representations.

@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { create } from 'zustand'
 import type { ClientMessage, ServerMessage, ConnectionState } from '../types/terminal'
 import { useActivityStore } from '../stores/activityStore'
+import { useSessionStore } from '../stores/sessions'
 
 // Session-specific message handlers
 export interface SessionHandlers {
@@ -197,6 +198,15 @@ export function useCentralWebSocket(): UseCentralWebSocketReturn {
           const callback = pendingSessionCallbacksRef.current.shift()
           if (callback) {
             callback(msg.sessionId, msg.shellType || 'sh')
+          }
+          return
+        }
+
+        // Handle tmux_status broadcast (before per-session routing)
+        if (msg.type === 'tmux_status' && msg.tmuxUpdates) {
+          const store = useSessionStore.getState()
+          for (const [sessionId, tmuxName] of Object.entries(msg.tmuxUpdates)) {
+            store.updateTmuxSessionName(sessionId, tmuxName || null)
           }
           return
         }

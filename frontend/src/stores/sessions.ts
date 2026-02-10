@@ -21,6 +21,10 @@ export interface Session {
   createdAt: number
   /** Whether the user has manually renamed this session (blocks automatic title updates) */
   userRenamed: boolean
+  /** Original auto-generated name, preserved for reversion on tmux detach */
+  originalName?: string
+  /** tmux session name this terminal is attached to (undefined = not in tmux) */
+  tmuxSessionName?: string
 }
 
 export interface SessionsState {
@@ -34,6 +38,8 @@ export interface SessionsActions {
   updateName: (id: string, name: string) => void
   /** Update session name from terminal OSC escape sequence (respects userRenamed flag) */
   updateTitleFromTerminal: (id: string, title: string) => void
+  /** Update tmux session name mapping. Empty/null clears (detach). */
+  updateTmuxSessionName: (id: string, name: string | null) => void
   clearSessions: () => void
 }
 
@@ -49,7 +55,7 @@ export const useSessionStore = create<SessionsStore>((set) => ({
   addSession: (session) =>
     set((state) => {
       const newMap = new Map(state.sessions)
-      newMap.set(session.id, session)
+      newMap.set(session.id, { ...session, originalName: session.originalName ?? session.name })
       return { sessions: newMap }
     }),
 
@@ -96,6 +102,31 @@ export const useSessionStore = create<SessionsStore>((set) => ({
       }
 
       newMap.set(id, { ...session, name: title })
+      return { sessions: newMap }
+    }),
+
+  updateTmuxSessionName: (id, name) =>
+    set((state) => {
+      const session = state.sessions.get(id)
+      if (!session) return state
+      const newMap = new Map(state.sessions)
+
+      if (name) {
+        // tmux attached — update tmuxSessionName; replace display name unless user renamed
+        const updated: Session = { ...session, tmuxSessionName: name }
+        if (!session.userRenamed) {
+          updated.name = name
+        }
+        newMap.set(id, updated)
+      } else {
+        // tmux detached — clear tmuxSessionName; revert display name to original
+        const updated: Session = { ...session, tmuxSessionName: undefined }
+        if (!session.userRenamed && session.originalName) {
+          updated.name = session.originalName
+        }
+        newMap.set(id, updated)
+      }
+
       return { sessions: newMap }
     }),
 

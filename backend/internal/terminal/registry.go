@@ -101,6 +101,22 @@ func (r *SessionRegistry) ListByOwner(owner string) []*Session {
 	return sessions
 }
 
+// ListByTmuxSession returns all sessions attached to the given tmux session name.
+// Returns an empty slice (not nil) if no sessions match.
+// Used by Plan 013 (Session Metadata API) for tmux-targeted updates.
+func (r *SessionRegistry) ListByTmuxSession(name string) []*Session {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	sessions := make([]*Session, 0)
+	for _, s := range r.sessions {
+		if s.TmuxSessionName == name {
+			sessions = append(sessions, s)
+		}
+	}
+	return sessions
+}
+
 // Count returns the number of sessions in the registry.
 func (r *SessionRegistry) Count() int {
 	r.mu.RLock()
@@ -110,22 +126,24 @@ func (r *SessionRegistry) Count() int {
 
 // SessionInfo represents the metadata of a session for REST API responses.
 type SessionInfo struct {
-	ID        string        `json:"id"`
-	Name      string        `json:"name"`
-	ShellType string        `json:"shellType"`
-	Status    SessionStatus `json:"status"`
-	CreatedAt time.Time     `json:"createdAt"`
-	Owner     string        `json:"owner,omitempty"`
+	ID               string        `json:"id"`
+	Name             string        `json:"name"`
+	ShellType        string        `json:"shellType"`
+	Status           SessionStatus `json:"status"`
+	CreatedAt        time.Time     `json:"createdAt"`
+	Owner            string        `json:"owner,omitempty"`
+	TmuxSessionName  string        `json:"tmuxSessionName,omitempty"`
 }
 
 // Info returns the session metadata suitable for API responses.
 func (s *Session) Info() SessionInfo {
 	return SessionInfo{
-		ID:        s.ID,
-		Name:      s.Name,
-		ShellType: s.ShellType,
-		Status:    s.Status,
-		CreatedAt: s.CreatedAt,
-		Owner:     s.Owner,
+		ID:              s.ID,
+		Name:            s.Name,
+		ShellType:       s.ShellType,
+		Status:          s.Status,
+		CreatedAt:       s.CreatedAt,
+		Owner:           s.Owner,
+		TmuxSessionName: s.TmuxSessionName,
 	}
 }

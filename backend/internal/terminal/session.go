@@ -35,6 +35,10 @@ type Session struct {
 	CreatedAt time.Time     // When session was created
 	Owner     string        // GitHub username of session creator (empty when auth disabled)
 
+	// tmux tracking fields
+	TtyPath          string // TTY device path (e.g., "/dev/ttys010") for tmux client matching
+	TmuxSessionName  string // tmux session this terminal is attached to (empty = not in tmux)
+
 	pty  PTY
 	conn Conn
 
@@ -328,6 +332,23 @@ func (s *Session) sendError(errMsg string) {
 	}
 	if err := s.sendJSON(msg); err != nil {
 		log.Printf("Failed to send error message: %v", err)
+	}
+}
+
+// GetConn returns the session's WebSocket connection.
+// Used by the tmux monitor to group updates by connection.
+func (s *Session) GetConn() Conn {
+	return s.conn
+}
+
+// SendTmuxStatus sends a tmux_status message with the given updates map.
+func (s *Session) SendTmuxStatus(updates map[string]string) {
+	msg := ServerMessage{
+		Type:        MsgTypeTmuxStatus,
+		TmuxUpdates: updates,
+	}
+	if err := s.sendJSON(msg); err != nil {
+		log.Printf("Failed to send tmux_status for session %s: %v", s.ID, err)
 	}
 }
 

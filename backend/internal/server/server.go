@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"log"
 	"net/http"
 	"time"
 
@@ -17,15 +19,23 @@ type Server struct {
 	version  string
 	registry *terminal.SessionRegistry
 	config   *config.Config
+
+	// tmux monitor for detecting tmux session attachments
+	monitor *terminal.TmuxMonitor
+	ctx     context.Context
+	cancel  context.CancelFunc
 }
 
 // New creates a new server instance
 func New(version string, cfg *config.Config) *Server {
+	ctx, cancel := context.WithCancel(context.Background())
 	s := &Server{
 		mux:      http.NewServeMux(),
 		version:  version,
 		registry: terminal.NewSessionRegistry(),
 		config:   cfg,
+		ctx:      ctx,
+		cancel:   cancel,
 	}
 	s.routes()
 
@@ -33,7 +43,61 @@ func New(version string, cfg *config.Config) *Server {
 	jwtService := auth.NewJWTService(cfg.JWTSecret)
 	s.handler = auth.Middleware(jwtService, cfg.AuthEnabled)(s.mux)
 
+	// Start tmux monitor
+	detector := terminal.NewRealTmuxDetector(5 * time.Second)
+	pollInterval := cfg.TmuxPollInterval
+	if pollInterval <= 0 {
+		pollInterval = 2 * time.Second
+	}
+	s.monitor = terminal.NewTmuxMonitor(detector, s.registry, pollInterval, s.handleTmuxChanges)
+	s.monitor.Start()
+
 	return s
+}
+
+// Shutdown stops background goroutines (tmux monitor, etc.).
+func (s *Server) Shutdown() {
+	s.cancel()
+	if s.monitor != nil {
+		s.monitor.Stop()
+	}
+	log.Printf("Server shutdown complete")
+}
+
+// handleTmuxChanges is called by the tmux monitor when session attachments change.
+// It groups updates by connection and sends one tmux_status message per connection
+// to avoid N duplicate messages when a connection owns N sessions.
+func (s *Server) handleTmuxChanges(updates map[string]string) {
+	// Group updates by connection: conn → {sessionID: tmuxName}
+	type connKey = terminal.Conn
+	byConn := make(map[connKey]map[string]string)
+
+	for sessionID, tmuxName := range updates {
+		session := s.registry.Get(sessionID)
+		if session == nil {
+			continue
+		}
+		conn := session.GetConn()
+		if conn == nil {
+			continue
+		}
+		if byConn[conn] == nil {
+			byConn[conn] = make(map[string]string)
+		}
+		byConn[conn][sessionID] = tmuxName
+	}
+
+	// Send one message per connection
+	for _, connUpdates := range byConn {
+		// Pick any session on this connection to send through
+		for sessionID := range connUpdates {
+			session := s.registry.Get(sessionID)
+			if session != nil {
+				session.SendTmuxStatus(connUpdates)
+				break // Only send once per connection
+			}
+		}
+	}
 }
 
 // ServeHTTP implements http.Handler

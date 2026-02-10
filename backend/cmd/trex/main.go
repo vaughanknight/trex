@@ -42,4 +42,5 @@ func main() {
 
 	<-stop
 	fmt.Println("\nShutting down...")
+	srv.Shutdown()
 }

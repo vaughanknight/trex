@@ -61,6 +61,38 @@ Add the `?` prefix whenever you stop and wait for user input, including:
 
 Remove the `?` as soon as the user responds and you resume work.
 
+## Dev Server Management (REQUIRED)
+
+When the user asks to start, stop, or restart the trex server, ALWAYS use the dev-server script:
+
+```bash
+# Start (builds frontend, copies to backend, runs with .env loaded)
+./scripts/dev-server.sh start
+
+# Stop
+./scripts/dev-server.sh stop
+
+# Restart (stop + start — use after rebuilding)
+./scripts/dev-server.sh restart
+
+# Check status
+./scripts/dev-server.sh status
+
+# Tail logs
+./scripts/dev-server.sh logs
+```
+
+The script uses `nohup` so the server survives if the parent process exits. Logs go to `backend/dev-server.log`, PID tracked in `backend/dev-server.pid`.
+
+**NEVER** use raw `go run`, `make dev-backend`, or manual process management. Always use the script.
+
+**IMPORTANT**: Before restarting, rebuild the frontend and copy it for embedding:
+
+```bash
+make copy-frontend        # Builds frontend + copies to backend/internal/static/dist
+./scripts/dev-server.sh restart
+```
+
 ## Pre-Push CI Check (REQUIRED)
 
 You MUST run the full build locally before pushing to ensure CI will pass. Do NOT rely on `tsc --noEmit` alone — it is less strict than `tsc -b` and misses errors like unused imports (TS6196).

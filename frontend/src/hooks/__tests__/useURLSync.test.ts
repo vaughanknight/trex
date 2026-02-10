@@ -55,6 +55,7 @@ function createURLSyncTestEnv(options?: {
     idleIndicatorsEnabled: true,
     urlConfirmAlways: false,
     urlConfirmThreshold: 5,
+    tmuxPollingInterval: 2000,
   }
 
   const useSettings = create<SettingsState & SettingsActions>()(
@@ -70,6 +71,9 @@ function createURLSyncTestEnv(options?: {
         setUrlConfirmAlways: (urlConfirmAlways: boolean) => set({ urlConfirmAlways }),
         setUrlConfirmThreshold: (threshold: number) => set({
           urlConfirmThreshold: Math.max(0, Math.min(50, threshold)),
+        }),
+        setTmuxPollingInterval: (interval: number) => set({
+          tmuxPollingInterval: Math.max(500, Math.min(30000, interval)),
         }),
         reset: () => set(defaultSettings),
       }),

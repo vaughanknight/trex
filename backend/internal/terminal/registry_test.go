@@ -210,6 +210,53 @@ func TestSessionRegistry_NextID_Unique(t *testing.T) {
 	}
 }
 
+// Test Doc:
+// - Why: ListByTmuxSession enables Plan 013 to target updates by tmux session name
+// - Contract: Returns only sessions whose TmuxSessionName matches; empty slice when none match
+// - Usage Notes: Thread-safe via RLock; empty string TmuxSessionName means not attached to tmux
+// - Quality Contribution: Ensures tmux-targeted metadata updates reach correct sessions
+// - Worked Example: 3 sessions, 2 on "work" → ListByTmuxSession("work") returns 2
+
+func TestSessionRegistry_ListByTmuxSession(t *testing.T) {
+	registry := NewSessionRegistry()
+
+	registry.Add(&Session{ID: "s1", TmuxSessionName: "work"})
+	registry.Add(&Session{ID: "s2", TmuxSessionName: "work"})
+	registry.Add(&Session{ID: "s3", TmuxSessionName: "debug"})
+	registry.Add(&Session{ID: "s4"}) // not in tmux
+
+	t.Run("filters by tmux session name", func(t *testing.T) {
+		sessions := registry.ListByTmuxSession("work")
+		if len(sessions) != 2 {
+			t.Fatalf("expected 2 sessions on 'work', got %d", len(sessions))
+		}
+		ids := make(map[string]bool)
+		for _, s := range sessions {
+			ids[s.ID] = true
+		}
+		if !ids["s1"] || !ids["s2"] {
+			t.Errorf("expected s1 and s2, got %v", ids)
+		}
+	})
+
+	t.Run("returns empty slice for no matches", func(t *testing.T) {
+		sessions := registry.ListByTmuxSession("nonexistent")
+		if sessions == nil {
+			t.Error("expected empty slice, got nil")
+		}
+		if len(sessions) != 0 {
+			t.Errorf("expected 0, got %d", len(sessions))
+		}
+	})
+
+	t.Run("does not match empty TmuxSessionName", func(t *testing.T) {
+		sessions := registry.ListByTmuxSession("")
+		if len(sessions) != 1 {
+			t.Errorf("expected 1 session with empty tmux name, got %d", len(sessions))
+		}
+	})
+}
+
 func TestSessionRegistry_NextID_Sequential(t *testing.T) {
 	registry := NewSessionRegistry()
 

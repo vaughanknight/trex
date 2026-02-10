@@ -11,6 +11,10 @@ import (
 type FakePTY struct {
 	mu sync.Mutex
 
+	// SimulatedTtyPath is the fake TTY device path for tmux monitor tests.
+	// Set this before registering the session to simulate a real PTY device path.
+	SimulatedTtyPath string
+
 	// OutputBuffer contains data to be read (simulated terminal output)
 	OutputBuffer *bytes.Buffer
 

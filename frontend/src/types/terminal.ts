@@ -3,10 +3,10 @@
  */
 
 /** Message types sent from client to server */
-export type ClientMessageType = 'input' | 'resize' | 'create' | 'close'
+export type ClientMessageType = 'input' | 'resize' | 'create' | 'close' | 'tmux_config'
 
 /** Message types sent from server to client */
-export type ServerMessageType = 'output' | 'error' | 'exit' | 'session_created'
+export type ServerMessageType = 'output' | 'error' | 'exit' | 'session_created' | 'tmux_status'
 
 /** Message sent from browser to server */
 export interface ClientMessage {
@@ -15,6 +15,7 @@ export interface ClientMessage {
   data?: string // For input messages
   cols?: number // For resize messages
   rows?: number // For resize messages
+  interval?: number // Polling interval in ms (for tmux_config)
 }
 
 /** Message sent from server to browser */
@@ -25,6 +26,7 @@ export interface ServerMessage {
   data?: string // For output messages
   error?: string // For error messages
   code?: number // For exit messages
+  tmuxUpdates?: Record<string, string> // sessionId → tmux session name (empty = detached)
 }
 
 /** Terminal connection state */

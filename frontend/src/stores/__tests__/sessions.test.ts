@@ -65,6 +65,23 @@ const createTestSessionStore = () =>
         return { sessions: newMap }
       }),
 
+    updateTmuxSessionName: (id: string, name: string | null) =>
+      set((state) => {
+        const session = state.sessions.get(id)
+        if (!session) return state
+        const newMap = new Map(state.sessions)
+        if (name) {
+          const updated = { ...session, tmuxSessionName: name }
+          if (!session.userRenamed) updated.name = name
+          newMap.set(id, updated)
+        } else {
+          const updated = { ...session, tmuxSessionName: undefined }
+          if (!session.userRenamed && session.originalName) updated.name = session.originalName
+          newMap.set(id, updated)
+        }
+        return { sessions: newMap }
+      }),
+
     clearSessions: () => set({ sessions: new Map() }),
   }))
 

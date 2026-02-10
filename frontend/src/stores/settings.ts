@@ -59,6 +59,8 @@ export interface SettingsState {
   urlConfirmAlways: boolean
   /** Prompt if URL requests more than this many sessions (0-50) */
   urlConfirmThreshold: number
+  /** tmux polling interval in milliseconds (500-30000, step 500) */
+  tmuxPollingInterval: number
 }
 
 export interface SettingsActions {
@@ -74,6 +76,8 @@ export interface SettingsActions {
   setUrlConfirmAlways: (always: boolean) => void
   /** Set session count threshold for URL confirmation (clamped 0-50) */
   setUrlConfirmThreshold: (threshold: number) => void
+  /** Set tmux polling interval in ms (clamped 500-30000) */
+  setTmuxPollingInterval: (interval: number) => void
   reset: () => void
 }
 
@@ -88,6 +92,7 @@ const defaultSettings: SettingsState = {
   idleIndicatorsEnabled: true,
   urlConfirmAlways: false,
   urlConfirmThreshold: 5,
+  tmuxPollingInterval: 2000,
 }
 
 /** Minimum threshold value in milliseconds (1 second) */
@@ -140,6 +145,10 @@ export const useSettingsStore = create<SettingsStore>()(
         urlConfirmThreshold: Math.max(0, Math.min(50, threshold)),
       }),
 
+      setTmuxPollingInterval: (interval) => set({
+        tmuxPollingInterval: Math.max(500, Math.min(30000, interval)),
+      }),
+
       reset: () => set(defaultSettings),
     }),
     {
@@ -168,6 +177,7 @@ export const selectIdleThresholds = (state: SettingsStore) => state.idleThreshol
 export const selectIdleIndicatorsEnabled = (state: SettingsStore) => state.idleIndicatorsEnabled
 export const selectUrlConfirmAlways = (state: SettingsStore) => state.urlConfirmAlways
 export const selectUrlConfirmThreshold = (state: SettingsStore) => state.urlConfirmThreshold
+export const selectTmuxPollingInterval = (state: SettingsStore) => state.tmuxPollingInterval
 
 // Re-export IdleThresholds type for consumers
 export type { IdleThresholds }

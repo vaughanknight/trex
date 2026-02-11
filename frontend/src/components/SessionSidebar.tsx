@@ -10,7 +10,9 @@
  *
  * Uses shadcn/ui Sidebar with variant="floating" and collapsible="icon"
  */
+import { useRef, useEffect, useState } from 'react'
 import { Settings, ChevronLeft, ChevronRight } from 'lucide-react'
+import { dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
 import {
   Sidebar,
   SidebarContent,
@@ -25,6 +27,8 @@ import { SessionList } from './SessionList'
 import { NewSessionButton } from './NewSessionButton'
 import { AuthButton } from './AuthButton'
 import { useUIStore, selectSidebarCollapsed } from '@/stores/ui'
+import { useWorkspaceStore } from '@/stores/workspace'
+import { useDragMonitor } from '@/hooks/useDragMonitor'
 
 function SettingsButton() {
   const toggleSettings = useUIStore(state => state.toggleSettingsPanel)
@@ -50,6 +54,40 @@ function ToggleButton() {
 }
 
 export function SessionSidebar() {
+  const dropRef = useRef<HTMLDivElement>(null)
+  const [isDropTarget, setIsDropTarget] = useState(false)
+  const detachPane = useWorkspaceStore((state) => state.detachPane)
+  const { isDragActive, dragData } = useDragMonitor()
+  const isPaneDrag = isDragActive && dragData?.type === 'pane'
+
+  // Make sidebar content a drop target for pane-back-to-sidebar (AC-19)
+  useEffect(() => {
+    const el = dropRef.current
+    if (!el) return
+
+    return dropTargetForElements({
+      element: el,
+      canDrop({ source }) {
+        const data = source.data as Record<string, unknown>
+        return data.type === 'pane'
+      },
+      onDragEnter() {
+        setIsDropTarget(true)
+      },
+      onDragLeave() {
+        setIsDropTarget(false)
+      },
+      onDrop({ source }) {
+        setIsDropTarget(false)
+        const paneId = (source.data as Record<string, unknown>).paneId as string
+        const itemIdFromDrag = (source.data as Record<string, unknown>).itemId as string | undefined
+        if (itemIdFromDrag) {
+          detachPane(itemIdFromDrag, paneId)
+        }
+      },
+    })
+  }, [detachPane])
+
   return (
     <Sidebar variant="floating" collapsible="icon">
       <SidebarHeader>
@@ -61,7 +99,12 @@ export function SessionSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        <SessionList />
+        <div
+          ref={dropRef}
+          className={`flex-1 min-h-0 ${isPaneDrag && isDropTarget ? 'ring-2 ring-primary/40 ring-inset rounded' : ''}`}
+        >
+          <SessionList />
+        </div>
       </SidebarContent>
 
       <SidebarFooter>

@@ -2,8 +2,9 @@
  * UI Store Tests
  *
  * Tests for useUIStore which manages UI state with partial persistence.
- * sidebarCollapsed and sidebarPinned are persisted; activeSessionId
- * and settingsPanelOpen are transient.
+ * sidebarCollapsed and sidebarPinned are persisted; settingsPanelOpen is transient.
+ *
+ * Note: activeSessionId has been migrated to workspace store (Plan 016).
  *
  * @see /docs/plans/003-sidebar-settings-sessions/sidebar-settings-sessions-spec.md
  */
@@ -19,11 +20,9 @@ const createTestUIStore = (storage: FakeStorage) =>
   create<UIState & UIActions>()(
     persist(
       (set) => ({
-        activeSessionId: null,
         settingsPanelOpen: false,
         sidebarCollapsed: false,
         sidebarPinned: false,
-        setActiveSession: (id) => set({ activeSessionId: id }),
         toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
         setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
         toggleSidebarPin: () => set((s) => ({ sidebarPinned: !s.sidebarPinned })),
@@ -48,29 +47,6 @@ describe('useUIStore', () => {
 
   beforeEach(() => {
     storage = new FakeStorage()
-  })
-
-  /**
-   * Test: activeSessionId should NOT be persisted
-   *
-   * Behavior: activeSessionId is transient state, not written to storage
-   * Fixture: Set activeSessionId, check storage
-   * Assertion: Storage does not contain activeSessionId
-   *
-   * Validates: Insight 6 decision - partialize for layout preferences only
-   */
-  it('should NOT persist activeSessionId', async () => {
-    const useUI = createTestUIStore(storage)
-
-    useUI.getState().setActiveSession('session-123')
-    await new Promise((r) => setTimeout(r, 0))
-
-    const stored = storage.getItemParsed<{
-      state: { activeSessionId?: string; sidebarCollapsed?: boolean }
-    }>('trex-ui')
-
-    expect(stored?.state.activeSessionId).toBeUndefined()
-    expect(useUI.getState().activeSessionId).toBe('session-123') // Still in memory
   })
 
   /**
@@ -121,7 +97,6 @@ describe('useUIStore', () => {
     expect(useUI.getState().sidebarPinned).toBe(true)
 
     // Transient fields have defaults
-    expect(useUI.getState().activeSessionId).toBe(null)
     expect(useUI.getState().settingsPanelOpen).toBe(false)
   })
 })

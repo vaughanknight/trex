@@ -1,23 +1,34 @@
 /**
  * TAD Scratch: Session item click to select
- * Exploring: How to wire session clicks to activeSessionId in UI store
+ * Exploring: How to wire session clicks to activeSessionId via workspace store
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { useUIStore, selectActiveSessionId } from '@/stores/ui'
+import { useWorkspaceStore, selectActiveSessionId } from '@/stores/workspace'
 import { useSessionStore } from '@/stores/sessions'
 
-// Simple session item component - click to select
+// Simple session item component - click to select via workspace store
 function SessionItem({ id, name }: { id: string; name: string }) {
-  const activeId = useUIStore(selectActiveSessionId)
-  const setActive = useUIStore(state => state.setActiveSession)
+  const activeId = useWorkspaceStore(selectActiveSessionId)
   const isActive = activeId === id
+
+  const handleClick = () => {
+    const ws = useWorkspaceStore.getState()
+    // Find existing workspace item for this session, or create one
+    const existing = ws.findItemBySessionId(id)
+    if (existing) {
+      ws.setActiveItem(existing.id)
+    } else {
+      const itemId = ws.addSessionItem(id)
+      ws.setActiveItem(itemId)
+    }
+  }
 
   return (
     <div
       data-testid={`session-${id}`}
       data-active={isActive}
-      onClick={() => setActive(id)}
+      onClick={handleClick}
       style={{ fontWeight: isActive ? 'bold' : 'normal' }}
     >
       {name}
@@ -27,13 +38,13 @@ function SessionItem({ id, name }: { id: string; name: string }) {
 
 // Display active session indicator
 function ActiveIndicator() {
-  const activeId = useUIStore(selectActiveSessionId)
+  const activeId = useWorkspaceStore(selectActiveSessionId)
   return <div data-testid="active">{activeId ?? 'none'}</div>
 }
 
 describe('Session item click to select', () => {
   beforeEach(() => {
-    useUIStore.setState({ activeSessionId: null })
+    useWorkspaceStore.setState({ items: [], activeItemId: null })
     useSessionStore.getState().clearSessions()
   })
 

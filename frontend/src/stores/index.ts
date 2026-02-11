@@ -7,7 +7,7 @@
  * - useSessionStore: Session state (no persist)
  */
 
-export { useUIStore, selectActiveSessionId, selectSidebarCollapsed, selectSidebarPinned, selectSettingsPanelOpen } from './ui'
+export { useUIStore, selectSidebarCollapsed, selectSidebarPinned, selectSettingsPanelOpen } from './ui'
 export type { UIStore, UIState, UIActions } from './ui'
 
 export { useSettingsStore, selectTheme, selectFontSize, selectFontFamily, selectAutoOpenTerminal, BUNDLED_FONTS, FALLBACK_FONTS } from './settings'

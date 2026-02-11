@@ -61,37 +61,125 @@ Add the `?` prefix whenever you stop and wait for user input, including:
 
 Remove the `?` as soon as the user responds and you resume work.
 
-## Dev Server Management (REQUIRED)
+## Development Setup (REQUIRED — READ THIS CAREFULLY)
 
-When the user asks to start, stop, or restart the trex server, ALWAYS use the dev-server script:
+### Vite Dev Server + ngrok (for live development)
+
+During development, the user runs the **Vite dev server** on port 5173 with hot module reload (HMR). ngrok points to port **5173**, NOT the Go backend on port 3000.
+
+**CRITICAL**: When the user wants to see changes in the browser:
+- Frontend changes are **automatically hot-reloaded** by Vite — NO rebuild or restart needed
+- Just save the file and the browser updates instantly
+- **DO NOT** run `make copy-frontend` or restart the dev server for frontend changes
+- **DO NOT** point ngrok to port 3000 — it MUST point to port 5173
 
 ```bash
-# Start (builds frontend, copies to backend, runs with .env loaded)
-./scripts/dev-server.sh start
+# The user's typical dev setup (already running):
+# Terminal 1: cd frontend && npm run dev     → Vite on http://localhost:5173
+# Terminal 2: ./scripts/dev-server.sh start  → Go backend on http://localhost:3000
+# Terminal 3: ngrok http 5173 --url=...      → Public URL → Vite (port 5173)
+```
 
-# Stop
-./scripts/dev-server.sh stop
+Vite proxies API/WebSocket requests to the Go backend automatically (configured in `vite.config.ts`).
 
-# Restart (stop + start — use after rebuilding)
-./scripts/dev-server.sh restart
+### Go Backend Dev Server
 
-# Check status
-./scripts/dev-server.sh status
+When the user asks to start, stop, or restart the **backend** server, use the dev-server script:
 
-# Tail logs
-./scripts/dev-server.sh logs
+```bash
+./scripts/dev-server.sh start    # Start Go backend on port 3000
+./scripts/dev-server.sh stop     # Stop
+./scripts/dev-server.sh restart  # Restart
+./scripts/dev-server.sh status   # Check status
+./scripts/dev-server.sh logs     # Tail logs
 ```
 
 The script uses `nohup` so the server survives if the parent process exits. Logs go to `backend/dev-server.log`, PID tracked in `backend/dev-server.pid`.
 
 **NEVER** use raw `go run`, `make dev-backend`, or manual process management. Always use the script.
 
-**IMPORTANT**: Before restarting, rebuild the frontend and copy it for embedding:
+### Production Build (for deployment only)
+
+Only use `make copy-frontend` when building for production/deployment (NOT for development):
 
 ```bash
 make copy-frontend        # Builds frontend + copies to backend/internal/static/dist
 ./scripts/dev-server.sh restart
 ```
+
+## Zustand Store Selectors (REQUIRED — CAUSES INFINITE LOOPS IF WRONG)
+
+Zustand selectors that return **new object/array references** on every call cause React infinite re-render loops (`Maximum update depth exceeded`). This is the most common bug in this codebase.
+
+### Rules
+
+1. **NEVER subscribe to a store method that returns a new array/object**:
+   ```tsx
+   // BAD — getSessionsInLayout() creates a new array every render → infinite loop
+   const sessions = useLayoutStore((state) => state.getSessionsInLayout())
+
+   // GOOD — wrap with useShallow for shallow equality comparison
+   const sessions = useLayoutStore(useShallow((state) => state.getSessionsInLayout()))
+
+   // GOOD — read imperatively inside callbacks (no subscription at all)
+   const sessions = useLayoutStore.getState().getSessionsInLayout()
+   ```
+
+2. **Prefer scalar selectors** (string, number, boolean, null) — they use `===` comparison and never cause loops:
+   ```tsx
+   // GOOD — scalar values are safe
+   const layout = useLayoutStore((state) => state.layout)
+   const focusedPaneId = useLayoutStore((state) => state.focusedPaneId)
+   ```
+
+3. **For arrays/objects in subscriptions**, always use `useShallow` from `zustand/shallow`:
+   ```tsx
+   import { useShallow } from 'zustand/shallow'
+   const sessions = useSessionStore(useShallow(state =>
+     Array.from(state.sessions.values())
+   ))
+   ```
+
+4. **For values only needed inside callbacks** (not for rendering), use `getState()` imperatively:
+   ```tsx
+   // Inside useEffect, event handlers, or @atlaskit callbacks:
+   const currentSessions = useLayoutStore.getState().getSessionsInLayout()
+   ```
+
+### Common Offenders
+- `getSessionsInLayout()` — returns `string[]`, new ref every call
+- `Array.from(state.sessions.values())` — new array every call
+- Any `.map()`, `.filter()`, or spread in a selector
+
+## Terminal Resize Architecture (REQUIRED — DO NOT USE window.resize)
+
+Each Terminal component manages its own resize via a **per-terminal ResizeObserver** on its container div. There is NO global `window.resize` broadcast.
+
+### Rules
+
+1. **Each Terminal has its own ResizeObserver** — observes `containerRef.current` directly
+2. **PaneContainer has NO ResizeObserver** — Terminal handles all resize detection
+3. **Dimension caching** — ResizeObserver callback checks `contentRect` against cached values; skips entirely if unchanged
+4. **cols/rows caching** — `sendResize()` only fires when terminal dimensions actually change
+5. **NEVER dispatch `window.dispatchEvent(new Event('resize'))`** — this was the old pattern and caused N×N resize storms
+
+### WebGL Pool
+
+All terminals acquire WebGL on **mount** (not on focus change). The pool (`stores/webglPool.ts`) has `maxSize=4`.
+
+```tsx
+// GOOD — acquire on mount, release on unmount
+// In the init effect:
+const pool = useWebGLPoolStore.getState()
+const addon = pool.acquire(sessionId, terminal)
+
+// BAD — acquire/release on focus change (causes WebGL churn + DOM renderer fallback)
+useEffect(() => { if (isFocused) pool.acquire(...) }, [isFocused])
+```
+
+### TypeScript Config
+
+`erasableSyntaxOnly` is enabled. **DO NOT** use `private`, `public`, or `protected` keywords in classes. Use `#private` syntax or omit access modifiers.
 
 ## Pre-Push CI Check (REQUIRED)
 

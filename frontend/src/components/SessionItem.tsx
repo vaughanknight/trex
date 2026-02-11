@@ -12,9 +12,12 @@
  *
  * Per Phase 5: Close sends 'close' message to backend to terminate PTY.
  */
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, startTransition } from 'react'
 import { X, Terminal } from 'lucide-react'
-import { useUIStore, selectActiveSessionId } from '@/stores/ui'
+import { draggable, dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
+import { setCustomNativeDragPreview } from '@atlaskit/pragmatic-drag-and-drop/element/set-custom-native-drag-preview'
+import { attachClosestEdge, extractClosestEdge } from '@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge'
+import { useWorkspaceStore, selectActiveSessionId } from '@/stores/workspace'
 import { useSessionStore, type Session, type SessionStatus } from '@/stores/sessions'
 import { useSettingsStore, selectIdleThresholds, selectIdleIndicatorsEnabled } from '@/stores/settings'
 import { useCentralWebSocket } from '@/hooks/useCentralWebSocket'
@@ -43,6 +46,10 @@ const IDLE_STATE_COLORS: Record<IdleState, { dot: string; icon: string; tint: st
 
 interface SessionItemProps {
   session: Session
+  /** Workspace item ID. Undefined for orphan sessions (not yet in workspace). */
+  itemId?: string
+  /** Position in sidebar list. Undefined for orphan sessions. */
+  index?: number
 }
 
 const statusLabels: Record<SessionStatus, string> = {
@@ -52,13 +59,21 @@ const statusLabels: Record<SessionStatus, string> = {
   exited: 'Exited',
 }
 
-export function SessionItem({ session }: SessionItemProps) {
+export function SessionItem({ session, itemId, index }: SessionItemProps) {
   const [isEditing, setIsEditing] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
   const [editValue, setEditValue] = useState(session.name)
+  const [closestEdge, setClosestEdge] = useState<'top' | 'bottom' | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const dragRef = useRef<HTMLLIElement>(null)
 
-  const activeSessionId = useUIStore(selectActiveSessionId)
-  const setActiveSession = useUIStore(state => state.setActiveSession)
+  // Refs for stable callbacks in drag/drop handlers
+  const itemIdRef = useRef(itemId)
+  itemIdRef.current = itemId
+  const indexRef = useRef(index)
+  indexRef.current = index
+
+  const activeSessionId = useWorkspaceStore(selectActiveSessionId)
   const removeSession = useSessionStore(state => state.removeSession)
   const updateName = useSessionStore(state => state.updateName)
   const { closeSession } = useCentralWebSocket()
@@ -93,9 +108,96 @@ export function SessionItem({ session }: SessionItemProps) {
     }
   }, [isEditing])
 
+  // Make session item draggable for pane splitting + reorderable (Phase 4/5)
+  useEffect(() => {
+    const el = dragRef.current
+    if (!el) return
+
+    const cleanupDrag = draggable({
+      element: el,
+      canDrag() {
+        return !isEditing
+      },
+      getInitialData() {
+        return {
+          type: 'sidebar-session',
+          sessionId: session.id,
+          sessionName: session.name,
+          itemId: itemIdRef.current,
+          index: indexRef.current,
+        }
+      },
+      onGenerateDragPreview({ nativeSetDragImage }) {
+        setCustomNativeDragPreview({
+          nativeSetDragImage,
+          render({ container }) {
+            const el = document.createElement('div')
+            el.style.cssText = 'padding:4px 12px;background:#1e293b;color:#e2e8f0;border-radius:6px;font-size:13px;font-family:monospace;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.3);'
+            el.textContent = session.name
+            container.appendChild(el)
+          },
+        })
+      },
+      onDragStart() {
+        setIsDragging(true)
+      },
+      onDrop() {
+        setIsDragging(false)
+      },
+    })
+
+    // Register drop target for sidebar reorder (only for workspace items)
+    let cleanupDrop: (() => void) | undefined
+    if (itemIdRef.current != null) {
+      cleanupDrop = dropTargetForElements({
+        element: el,
+        canDrop({ source }) {
+          const data = source.data as Record<string, unknown>
+          if (!data.itemId) return false
+          if (data.itemId === itemIdRef.current) return false
+          return data.type === 'sidebar-session' || data.type === 'sidebar-layout'
+        },
+        getData({ input, element }) {
+          return attachClosestEdge(
+            { reorderTarget: true, itemId: itemIdRef.current, index: indexRef.current },
+            { input, element, allowedEdges: ['top', 'bottom'] },
+          )
+        },
+        onDragEnter({ self }) {
+          setClosestEdge(extractClosestEdge(self.data) as 'top' | 'bottom' | null)
+        },
+        onDrag({ self }) {
+          setClosestEdge(extractClosestEdge(self.data) as 'top' | 'bottom' | null)
+        },
+        onDragLeave() {
+          setClosestEdge(null)
+        },
+        onDrop() {
+          setClosestEdge(null)
+        },
+      })
+    }
+
+    return () => {
+      cleanupDrag()
+      cleanupDrop?.()
+    }
+  }, [session.id, session.name, isEditing, itemId])
+
   const handleClick = () => {
     if (!isEditing) {
-      setActiveSession(session.id)
+      startTransition(() => {
+        const ws = useWorkspaceStore.getState()
+        // Find the workspace item containing this session
+        const item = ws.findItemBySessionId(session.id)
+        if (!item) {
+          // Orphan session — create a workspace item for it on first click
+          const itemId = ws.addSessionItem(session.id)
+          ws.setActiveItem(itemId)
+        } else {
+          ws.setActiveItem(item.id)
+        }
+      })
     }
   }
 
@@ -104,9 +206,11 @@ export function SessionItem({ session }: SessionItemProps) {
     closeSession(session.id)
     // Remove from store
     removeSession(session.id)
-    // If closing the active session, clear selection
-    if (isActive) {
-      setActiveSession(null)
+    // Workspace item removal happens via session lifecycle subscription (if wired)
+    // For standalone sessions, the workspace item will be cleaned up
+    const item = useWorkspaceStore.getState().findItemBySessionId(session.id)
+    if (item) {
+      useWorkspaceStore.getState().removeItem(item.id)
     }
   }
 
@@ -143,7 +247,7 @@ export function SessionItem({ session }: SessionItemProps) {
 
   return (
     <SessionContextMenu onRename={handleRename} onClose={handleClose}>
-      <SidebarMenuItem>
+      <SidebarMenuItem ref={dragRef} style={{ opacity: isDragging ? 0.4 : 1 }}>
         <SidebarMenuButton
           isActive={isActive}
           onClick={handleClick}
@@ -184,6 +288,14 @@ export function SessionItem({ session }: SessionItemProps) {
           >
             <X className="size-4" />
           </SidebarMenuAction>
+        )}
+        {closestEdge && (
+          <div
+            className={cn(
+              'absolute left-2 right-2 h-0.5 bg-blue-500 rounded-full pointer-events-none z-10',
+              closestEdge === 'top' ? '-top-px' : '-bottom-px',
+            )}
+          />
         )}
       </SidebarMenuItem>
     </SessionContextMenu>

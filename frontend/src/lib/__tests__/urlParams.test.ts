@@ -1,70 +1,97 @@
 /**
- * URL Parameter Parsing Tests
+ * URL Parameter Tests — Workspace URL encoding v2
  *
- * Tests for parseSessionParams and buildSessionParams pure functions.
- * These are the lightweight v1 tests; the test harness in
- * hooks/__tests__/useURLSync.test.ts provides infrastructure for
- * future inflation scenarios.
+ * Tests for parseWorkspaceURL and buildWorkspaceURL.
+ * Legacy ?layout= and ?s=&a= tests have been removed.
  *
- * Per Plan 009: URL Routing (T008)
+ * Per Plan 016 Phase 6: URL Encoding v2
  */
 
 import { describe, it, expect } from 'vitest'
-import { parseSessionParams, buildSessionParams } from '../urlParams'
+import { parseWorkspaceURL, buildWorkspaceURL } from '../urlParams'
+import type { WorkspaceURLSchema } from '../workspaceCodec'
 
-describe('parseSessionParams', () => {
-  it('parses valid params ?s=3&a=1', () => {
-    const result = parseSessionParams('?s=3&a=1')
-    expect(result).toEqual({ sessionCount: 3, activeIndex: 1 })
-  })
-
-  it('returns null for negative session count ?s=-1', () => {
-    const result = parseSessionParams('?s=-1')
-    expect(result).toEqual({ sessionCount: null, activeIndex: null })
-  })
-
-  it('returns null for non-numeric session count ?s=abc', () => {
-    const result = parseSessionParams('?s=abc')
-    expect(result).toEqual({ sessionCount: null, activeIndex: null })
-  })
-
-  it('returns null for zero session count ?s=0', () => {
-    const result = parseSessionParams('?s=0')
-    expect(result).toEqual({ sessionCount: null, activeIndex: null })
-  })
-
+describe('parseWorkspaceURL', () => {
   it('returns null for empty search string', () => {
-    const result = parseSessionParams('')
-    expect(result).toEqual({ sessionCount: null, activeIndex: null })
+    expect(parseWorkspaceURL('')).toBeNull()
   })
 
-  it('clamps activeIndex when >= sessionCount', () => {
-    const result = parseSessionParams('?s=3&a=5')
-    expect(result).toEqual({ sessionCount: 3, activeIndex: 2 })
+  it('returns null for no ?w= param', () => {
+    expect(parseWorkspaceURL('?foo=bar')).toBeNull()
   })
 
-  it('handles s param without a param', () => {
-    const result = parseSessionParams('?s=3')
-    expect(result).toEqual({ sessionCount: 3, activeIndex: null })
+  it('returns null for malformed base64', () => {
+    expect(parseWorkspaceURL('?w=!!!invalid!!!')).toBeNull()
   })
 
-  it('handles a=0 as valid', () => {
-    const result = parseSessionParams('?s=3&a=0')
-    expect(result).toEqual({ sessionCount: 3, activeIndex: 0 })
+  it('returns null for valid base64 but invalid JSON', () => {
+    const b64 = btoa('not json').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    expect(parseWorkspaceURL(`?w=${b64}`)).toBeNull()
+  })
+
+  it('returns null for valid JSON but wrong schema', () => {
+    const b64 = btoa('{"foo":"bar"}').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    expect(parseWorkspaceURL(`?w=${b64}`)).toBeNull()
+  })
+
+  it('parses valid workspace schema', () => {
+    const schema: WorkspaceURLSchema = { v: 1, a: 0, i: [{ t: 's', s: 'zsh' }] }
+    const encoded = btoa(JSON.stringify(schema)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    const result = parseWorkspaceURL(`?w=${encoded}`)
+    expect(result).toEqual(schema)
   })
 })
 
-describe('buildSessionParams', () => {
-  it('builds correct query string', () => {
-    const result = buildSessionParams(3, 1)
-    expect(result).toBe('s=3&a=1')
+describe('buildWorkspaceURL', () => {
+  it('builds URL string with w= parameter', () => {
+    const schema: WorkspaceURLSchema = { v: 1, a: 0, i: [{ t: 's', s: 'bash' }] }
+    const result = buildWorkspaceURL(schema)
+    expect(result).toMatch(/^w=/)
   })
 })
 
 describe('round-trip', () => {
-  it('parse(build(5, 2)) returns original values', () => {
-    const params = buildSessionParams(5, 2)
-    const parsed = parseSessionParams('?' + params)
-    expect(parsed).toEqual({ sessionCount: 5, activeIndex: 2 })
+  it('parse(build(schema)) returns original values', () => {
+    const schema: WorkspaceURLSchema = {
+      v: 1,
+      a: 1,
+      i: [
+        { t: 's', s: 'bash' },
+        { t: 's', s: 'zsh' },
+        { t: 'l', n: 'My Layout', r: 'H50bz' },
+      ],
+    }
+    const url = buildWorkspaceURL(schema)
+    const parsed = parseWorkspaceURL('?' + url)
+    expect(parsed).toEqual(schema)
+  })
+
+  it('round-trip preserves empty workspace', () => {
+    const schema: WorkspaceURLSchema = { v: 1, a: -1, i: [] }
+    const url = buildWorkspaceURL(schema)
+    const parsed = parseWorkspaceURL('?' + url)
+    expect(parsed).toEqual(schema)
+  })
+
+  it('round-trip preserves layout with deep tree', () => {
+    const schema: WorkspaceURLSchema = {
+      v: 1,
+      a: 0,
+      i: [{ t: 'l', n: 'Complex', r: 'H50V50bzV50bz' }],
+    }
+    const url = buildWorkspaceURL(schema)
+    const parsed = parseWorkspaceURL('?' + url)
+    expect(parsed).toEqual(schema)
+  })
+
+  it('round-trip preserves unicode layout names', () => {
+    const schema: WorkspaceURLSchema = {
+      v: 1,
+      a: 0,
+      i: [{ t: 'l', n: 'My Layout', r: 'H50bz' }],
+    }
+    const url = buildWorkspaceURL(schema)
+    const parsed = parseWorkspaceURL('?' + url)
+    expect(parsed).toEqual(schema)
   })
 })

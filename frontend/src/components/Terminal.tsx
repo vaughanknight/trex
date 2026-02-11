@@ -15,22 +15,25 @@ import { useThemePreview } from '../contexts/ThemePreviewContext'
 interface TerminalProps {
   /** Session ID for message routing */
   sessionId: string
-  /** Whether this terminal is active/visible */
-  isActive?: boolean
+  /** Controls WebGL acquisition and resize event sending. Does NOT control visibility. */
+  isFocused?: boolean
   /** Callback when terminal is ready */
   onReady?: (terminal: XTerm) => void
+  /** Callback when the session process exits (for SessionEndedOverlay in split panes) */
+  onSessionExit?: (exitCode: number) => void
 }
 
 /**
  * Terminal component that renders an xterm.js terminal for a specific session.
  *
  * Per Phase 5: Accepts sessionId prop for multi-session support.
- * WebGL is managed by the pool based on isActive state (see stores/webglPool.ts).
+ * WebGL is managed by the pool based on isFocused state (see stores/webglPool.ts).
  */
 export function Terminal({
   sessionId,
-  isActive = true,
+  isFocused = true,
   onReady,
+  onSessionExit,
 }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<XTerm | null>(null)
@@ -38,10 +41,14 @@ export function Terminal({
   const webglAddonRef = useRef<IWebglAddon | null>(null)
   // Per-instance debounce timer for resize events (moved from module-level to fix multi-instance bug)
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Cache container dimensions to skip fit() when size hasn't changed
+  const lastContainerSizeRef = useRef<{ w: number; h: number } | null>(null)
+  // Cache terminal cols/rows to skip sendResize when dimensions haven't changed
+  const lastDimsRef = useRef<{ cols: number; rows: number } | null>(null)
   // Capture initial value for onReady (don't change after init)
   const onReadyRef = useRef(onReady)
   // Track active state to prevent sending resize for hidden terminals
-  const isActiveRef = useRef(isActive)
+  const isFocusedRef = useRef(isFocused)
 
   const { sendInput, sendResize, registerSession, unregisterSession, connectionState } =
     useCentralWebSocket()
@@ -57,14 +64,52 @@ export function Terminal({
     sendInputRef.current = sendInput
   }, [sendResize, sendInput])
 
-  // Keep isActiveRef in sync
+  // Keep isFocusedRef in sync
   useEffect(() => {
-    isActiveRef.current = isActive
-  }, [isActive])
+    isFocusedRef.current = isFocused
+  }, [isFocused])
 
-  // Handle terminal output - write to xterm
+  // Output throttle for unfocused panes (DYK-02)
+  // When unfocused, buffer output and flush at ~200ms intervals to reduce DOM rendering overhead
+  const outputBufferRef = useRef<string[]>([])
+  const throttleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Flush buffered output to terminal
+  const flushOutputBuffer = useCallback(() => {
+    if (outputBufferRef.current.length === 0) return
+    const buffered = outputBufferRef.current.join('')
+    outputBufferRef.current = []
+    xtermRef.current?.write(buffered)
+  }, [])
+
+  // Start/stop throttle timer based on focus state
+  useEffect(() => {
+    if (!isFocused) {
+      // Start periodic flush for unfocused pane
+      throttleTimerRef.current = setInterval(flushOutputBuffer, 200)
+    } else {
+      // Focused: flush immediately and stop timer
+      if (throttleTimerRef.current) {
+        clearInterval(throttleTimerRef.current)
+        throttleTimerRef.current = null
+      }
+      flushOutputBuffer()
+    }
+    return () => {
+      if (throttleTimerRef.current) {
+        clearInterval(throttleTimerRef.current)
+        throttleTimerRef.current = null
+      }
+    }
+  }, [isFocused, flushOutputBuffer])
+
+  // Handle terminal output - write to xterm (throttled when unfocused)
   const onOutput = useCallback((data: string) => {
-    xtermRef.current?.write(data)
+    if (isFocusedRef.current) {
+      xtermRef.current?.write(data)
+    } else {
+      outputBufferRef.current.push(data)
+    }
   }, [])
 
   // Handle errors - display in terminal
@@ -72,11 +117,16 @@ export function Terminal({
     xtermRef.current?.writeln(`\r\n\x1b[31mError: ${error}\x1b[0m\r\n`)
   }, [])
 
-  // Handle exit - display message
+  // Ref for onSessionExit callback (stable across renders)
+  const onSessionExitRef = useRef(onSessionExit)
+  onSessionExitRef.current = onSessionExit
+
+  // Handle exit - display message and notify parent
   const onExit = useCallback((code: number) => {
     xtermRef.current?.writeln(
       `\r\n\x1b[33mProcess exited with code ${code}\x1b[0m\r\n`
     )
+    onSessionExitRef.current?.(code)
   }, [])
 
   // Register session handlers with central WebSocket
@@ -111,41 +161,65 @@ export function Terminal({
     // Open terminal in container
     terminal.open(containerRef.current)
 
-    // Note: WebGL addon is now managed by the WebGL pool based on isActive state
-    // See the isActive-based effect below for pool-based WebGL acquisition
-    // The pool handles context loss and disposal - Terminal just acquires/releases
+    // Acquire WebGL from pool for GPU-accelerated rendering (all visible terminals)
+    // Pool handles capacity limits — up to maxSize terminals get WebGL, rest use DOM renderer
+    const pool = useWebGLPoolStore.getState()
+    const webglAddon = pool.acquire(sessionId, terminal)
+    if (webglAddon) {
+      terminal.loadAddon(webglAddon as unknown as Parameters<typeof terminal.loadAddon>[0])
+      webglAddonRef.current = webglAddon
+    }
 
     // Initial fit
     fitAddon.fit()
 
     // Handle resize with debounce (uses per-instance ref to avoid multi-terminal conflicts)
-    // Only send resize for active terminals to prevent hidden terminals sending tiny dimensions
+    // Each terminal observes its own container — no global window.resize broadcast needed
     const handleResize = () => {
       if (resizeTimeoutRef.current) {
         clearTimeout(resizeTimeoutRef.current)
       }
       resizeTimeoutRef.current = setTimeout(() => {
-        if (fitAddonRef.current && xtermRef.current && isActiveRef.current) {
+        if (fitAddonRef.current && xtermRef.current) {
           fitAddonRef.current.fit()
           const { cols, rows } = xtermRef.current
-          sendResizeRef.current(sessionId, cols, rows)
+          // Only send resize to backend when dimensions actually changed
+          const last = lastDimsRef.current
+          if (!last || last.cols !== cols || last.rows !== rows) {
+            lastDimsRef.current = { cols, rows }
+            sendResizeRef.current(sessionId, cols, rows)
+          }
         }
       }, 50) // 50ms debounce
     }
 
-    window.addEventListener('resize', handleResize)
+    // ResizeObserver on own container detects both browser window resize and panel drag resize
+    // Use contentRect to skip entirely when container dimensions haven't changed
+    const resizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) return
+      const { width, height } = entry.contentRect
+      const prev = lastContainerSizeRef.current
+      if (prev && prev.w === Math.round(width) && prev.h === Math.round(height)) return
+      lastContainerSizeRef.current = { w: Math.round(width), h: Math.round(height) }
+      handleResize()
+    })
+    resizeObserver.observe(containerRef.current)
 
     // Notify parent that terminal is ready (use ref for stable callback)
     onReadyRef.current?.(terminal)
 
     // Cleanup
     return () => {
-      window.removeEventListener('resize', handleResize)
+      resizeObserver.disconnect()
       if (resizeTimeoutRef.current) {
         clearTimeout(resizeTimeoutRef.current)
       }
-      // Note: WebGL addon is released via pool in the isActive effect cleanup
+      // Release WebGL back to pool before disposing terminal
       // Pool owns disposal per Critical Discovery 03
+      const pool = useWebGLPoolStore.getState()
+      pool.release(sessionId)
+      webglAddonRef.current = null
       terminal.dispose()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -163,11 +237,15 @@ export function Terminal({
   useEffect(() => {
     if (!xtermRef.current) return
 
-    // Send initial resize when connected (only for active terminal to avoid tiny dimensions)
-    if (connectionState === 'connected' && fitAddonRef.current && isActiveRef.current) {
+    // Send initial resize when connected — all visible terminals need correct dimensions
+    if (connectionState === 'connected' && fitAddonRef.current) {
       fitAddonRef.current.fit()
       const { cols, rows } = xtermRef.current
-      sendResizeRef.current(sessionId, cols, rows)
+      const last = lastDimsRef.current
+      if (!last || last.cols !== cols || last.rows !== rows) {
+        lastDimsRef.current = { cols, rows }
+        sendResizeRef.current(sessionId, cols, rows)
+      }
     }
 
     // Handle user input - route to specific session
@@ -217,7 +295,7 @@ export function Terminal({
 
   // Focus terminal and refresh rendering when active
   useEffect(() => {
-    if (isActive && xtermRef.current) {
+    if (isFocused && xtermRef.current) {
       // Small delay to ensure DOM is ready after display:none -> block transition
       // Use requestAnimationFrame for optimal timing with browser paint cycle
       requestAnimationFrame(() => {
@@ -226,58 +304,22 @@ export function Terminal({
           xtermRef.current.refresh(0, xtermRef.current.rows - 1)
           // Re-fit to ensure proper sizing
           fitAddonRef.current.fit()
-          // Send resize to backend with correct dimensions now that we're visible
+          // Send resize to backend only if dimensions changed
           const { cols, rows } = xtermRef.current
-          sendResizeRef.current(sessionId, cols, rows)
+          const last = lastDimsRef.current
+          if (!last || last.cols !== cols || last.rows !== rows) {
+            lastDimsRef.current = { cols, rows }
+            sendResizeRef.current(sessionId, cols, rows)
+          }
           // Focus the terminal
           xtermRef.current.focus()
         }
       })
     }
-  }, [isActive, sessionId])
+  }, [isFocused, sessionId])
 
-  // WebGL pool-based acquisition on isActive change
-  // Per Critical Discovery 01: Move WebGL management to isActive-based effect
-  // Per Critical Discovery 06: Use requestAnimationFrame for flicker prevention
-  useEffect(() => {
-    const terminal = xtermRef.current
-    if (!terminal) return
-
-    if (isActive) {
-      // Acquire WebGL from pool when becoming active
-      // Use requestAnimationFrame for optimal timing with browser paint cycle
-      const frameId = requestAnimationFrame(() => {
-        const pool = useWebGLPoolStore.getState()
-        const addon = pool.acquire(sessionId, terminal)
-
-        if (addon) {
-          // Load addon into terminal
-          terminal.loadAddon(addon as unknown as Parameters<typeof terminal.loadAddon>[0])
-          webglAddonRef.current = addon
-          // Refresh to sync rendering
-          terminal.refresh(0, terminal.rows - 1)
-        }
-        // If addon is null (pool exhausted), terminal uses DOM renderer (existing behavior)
-      })
-
-      // Cleanup for this effect
-      return () => {
-        cancelAnimationFrame(frameId)
-        // Release WebGL back to pool when becoming inactive or unmounting
-        // Per Critical Discovery 03: Pool owns disposal, not Terminal
-        const pool = useWebGLPoolStore.getState()
-        pool.release(sessionId)
-        webglAddonRef.current = null
-      }
-    }
-
-    // If not active, nothing to acquire - just ensure we're released
-    return () => {
-      const pool = useWebGLPoolStore.getState()
-      pool.release(sessionId)
-      webglAddonRef.current = null
-    }
-  }, [isActive, sessionId])
+  // WebGL is now acquired on mount in the init effect above.
+  // All visible terminals get WebGL (pool handles capacity limits).
 
   // Get background color from current theme
   const currentTheme = getThemeById(activeTheme)

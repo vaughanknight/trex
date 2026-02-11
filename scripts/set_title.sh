@@ -25,8 +25,12 @@ get_name() {
     "$SCRIPT_DIR/project_title.sh" name
 }
 
-# Set the terminal title via OSC escape sequence
+# Set the terminal/tmux title
 set_title() {
+    if [[ -n "${TMUX:-}" ]]; then
+        tmux rename-session "$1" 2>/dev/null
+        tmux rename-window "$1" 2>/dev/null
+    fi
     echo -ne "\033]0;$1\007"
 }
 

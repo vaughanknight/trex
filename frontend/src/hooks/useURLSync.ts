@@ -1,22 +1,26 @@
 /**
- * useURLSync - Syncs session state to/from URL query params.
+ * useURLSync - Syncs workspace state to/from URL query params.
  *
- * On mount: Reads URL params (?s=N&a=X), optionally shows confirmation dialog,
- * then creates sessions via WebSocket.
+ * On mount: Reads ?w= URL param, decodes workspace schema, creates sessions/layouts.
+ * On state change: Encodes workspace to ?w= URL param (300ms trailing debounce).
  *
- * On state change: Writes current session count and active index to URL
- * via history.replaceState (no history pollution).
+ * Per Plan 016 Phase 6: Full workspace URL encoding v2.
+ * Legacy ?layout= and ?s=&a= formats removed (alpha project, no backward compat).
  *
- * Per Plan 009: URL Routing (T006)
+ * @see /docs/plans/016-sidebar-url-overhaul/sidebar-url-overhaul-plan.md § Phase 6
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { parseSessionParams } from '@/lib/urlParams'
-import { buildSessionParams } from '@/lib/urlParams'
-import { useSessionStore, selectSessionCount, selectSessionList } from '@/stores/sessions'
-// Note: selectSessionList is only used imperatively (getState), not as a subscription,
-// because it creates new array refs on every call which would cause infinite re-renders.
-import { useUIStore, selectActiveSessionId } from '@/stores/ui'
+import { parseWorkspaceURL, buildWorkspaceURL } from '@/lib/urlParams'
+import {
+  type WorkspaceURLSchema,
+  countSchemaSessions,
+  buildWorkspaceSchema,
+} from '@/lib/workspaceCodec'
+import { urlTreeToLayout, parseLayout } from '@/lib/layoutCodec'
+import { getAllLeaves } from '@/lib/layoutTree'
+import { useSessionStore } from '@/stores/sessions'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { useCentralWebSocket } from './useCentralWebSocket'
 
@@ -31,90 +35,116 @@ export interface UseURLSyncReturn {
 export function useURLSync(): UseURLSyncReturn {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [pendingSessionCount, setPendingSessionCount] = useState(0)
-  const [pendingActiveIndex, setPendingActiveIndex] = useState<number | null>(null)
 
-  // Ref to prevent URL writes during initialization
   const isInitializing = useRef(false)
-  // Ref to track whether URL-driven creation has been handled
   const hasProcessedURL = useRef(false)
+  const pendingSchemaRef = useRef<WorkspaceURLSchema | null>(null)
+  const writeURLRef = useRef<(() => void) | null>(null)
 
   const { createSession } = useCentralWebSocket()
   const addSession = useSessionStore((state) => state.addSession)
-  const setActiveSession = useUIStore((state) => state.setActiveSession)
 
-  // Create sessions from URL params sequentially.
-  // Must be sequential because useCentralWebSocket.createSession() connects lazily:
-  // the first call triggers connect(), and subsequent calls while WS is still in
-  // CONNECTING state would silently drop (no create message sent). By chaining
-  // each creation in the previous callback, the WS is guaranteed OPEN for calls 2+.
-  const createSessionsFromURL = useCallback((count: number, activeIndex: number | null) => {
+  // Recreate workspace from URL schema
+  const createWorkspaceFromSchema = useCallback((schema: WorkspaceURLSchema) => {
     isInitializing.current = true
-    const createdIds: string[] = []
+    const ws = useWorkspaceStore.getState()
+    const createdItemIds: string[] = []
+    let itemIndex = 0
 
-    const createNext = (index: number) => {
-      if (index >= count) {
-        // All sessions created — set active session
-        const targetIndex = activeIndex !== null ? activeIndex : 0
-        if (targetIndex < createdIds.length) {
-          setActiveSession(createdIds[targetIndex])
-        } else {
-          setActiveSession(createdIds[0])
+    const processNextItem = () => {
+      if (itemIndex >= schema.i.length) {
+        // All items created — set active item
+        const targetIdx = schema.a >= 0 && schema.a < createdItemIds.length
+          ? schema.a
+          : 0
+        if (createdItemIds.length > 0) {
+          ws.setActiveItem(createdItemIds[targetIdx])
         }
         isInitializing.current = false
+        // Trigger URL write now that initialization is complete
+        writeURLRef.current?.()
         return
       }
 
-      createSession((sessionId, shellType) => {
-        const newSession = {
-          id: sessionId,
-          name: `${shellType}-${index + 1}`,
-          shellType,
-          status: 'active' as const,
-          createdAt: Date.now() + index, // Offset to preserve order
-          userRenamed: false,
-        }
+      const urlItem = schema.i[itemIndex]
+      itemIndex++
 
-        addSession(newSession)
-        createdIds.push(sessionId)
-        // Chain: create next session after this one completes
-        createNext(index + 1)
-      })
+      if (urlItem.t === 's') {
+        createSession((sessionId, shellType) => {
+          addSession({
+            id: sessionId,
+            name: `${shellType}-${createdItemIds.length + 1}`,
+            shellType,
+            status: 'active' as const,
+            createdAt: Date.now() + createdItemIds.length,
+            userRenamed: false,
+          })
+          const itemId = ws.addSessionItem(sessionId)
+          createdItemIds.push(itemId)
+          processNextItem()
+        })
+      } else if (urlItem.t === 'l') {
+        try {
+          const urlTree = parseLayout(urlItem.r)
+          const runtimeTree = urlTreeToLayout(urlTree)
+          const leaves = getAllLeaves(runtimeTree)
+
+          const itemId = ws.addLayoutItem(urlItem.n, runtimeTree, leaves[0]?.paneId ?? null)
+          createdItemIds.push(itemId)
+
+          let leafCompleted = 0
+          for (const leaf of leaves) {
+            createSession((sessionId: string, shellType: string) => {
+              ws.replaceSessionInPane(itemId, leaf.paneId, sessionId)
+              addSession({
+                id: sessionId,
+                name: `${shellType}-${leafCompleted + 1}`,
+                shellType,
+                status: 'active' as const,
+                createdAt: Date.now() + leafCompleted,
+                userRenamed: false,
+              })
+              leafCompleted++
+              if (leafCompleted >= leaves.length) {
+                processNextItem()
+              }
+            })
+          }
+        } catch {
+          processNextItem()
+        }
+      } else {
+        processNextItem()
+      }
     }
 
-    createNext(0)
-  }, [createSession, addSession, setActiveSession])
+    processNextItem()
+  }, [createSession, addSession])
 
   // Handle URL params on mount
   useEffect(() => {
     if (hasProcessedURL.current) return
     hasProcessedURL.current = true
 
-    const parsed = parseSessionParams(window.location.search)
+    const schema = parseWorkspaceURL(window.location.search)
+    if (!schema || schema.i.length === 0) return
 
-    // No URL params — do nothing, let normal behavior continue
-    if (parsed.sessionCount === null) return
-
-    const count = parsed.sessionCount
-    const activeIndex = parsed.activeIndex
-
-    // Check if confirmation is needed
     const waitForSettings = () => {
       const settings = useSettingsStore.getState()
-
+      const sessionCount = countSchemaSessions(schema)
       const needsConfirm =
         settings.urlConfirmAlways ||
-        count > settings.urlConfirmThreshold
+        sessionCount > settings.urlConfirmThreshold
 
       if (needsConfirm) {
-        setPendingSessionCount(count)
-        setPendingActiveIndex(activeIndex)
+        setPendingSessionCount(sessionCount)
         setShowConfirmDialog(true)
+        pendingSchemaRef.current = schema
       } else {
-        createSessionsFromURL(count, activeIndex)
+        createWorkspaceFromSchema(schema)
       }
     }
 
-    // Wait for settings store hydration before checking thresholds
     if (useSettingsStore.persist.hasHydrated()) {
       waitForSettings()
     } else {
@@ -123,46 +153,69 @@ export function useURLSync(): UseURLSyncReturn {
         waitForSettings()
       })
     }
-  }, [createSessionsFromURL])
+  }, [createWorkspaceFromSchema])
 
   // Dialog callbacks
   const onConfirm = useCallback(() => {
     setShowConfirmDialog(false)
-    createSessionsFromURL(pendingSessionCount, pendingActiveIndex)
-  }, [pendingSessionCount, pendingActiveIndex, createSessionsFromURL])
+    if (pendingSchemaRef.current) {
+      createWorkspaceFromSchema(pendingSchemaRef.current)
+      pendingSchemaRef.current = null
+    }
+  }, [createWorkspaceFromSchema])
 
   const onCancel = useCallback(() => {
     setShowConfirmDialog(false)
     setPendingSessionCount(0)
-    setPendingActiveIndex(null)
   }, [])
 
   const onDisablePrompt = useCallback(() => {
     useSettingsStore.getState().setUrlConfirmAlways(false)
   }, [])
 
-  // Sync state changes back to URL
-  // Only subscribe to scalar values (number, string|null) — never to selectors
-  // that create new array refs (like selectSessionList), which cause infinite loops.
-  const sessionCount = useSessionStore(selectSessionCount)
-  const activeSessionId = useUIStore(selectActiveSessionId)
-
+  // Debounced URL write via store subscriptions (300ms trailing)
+  // Subscribes to both workspace and session stores to capture all changes.
   useEffect(() => {
-    // Skip URL writes during initialization to prevent feedback loop
-    if (isInitializing.current) return
-    // Don't write URL if no sessions exist
-    if (sessionCount === 0) return
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
 
-    // Read session list imperatively (not via subscription) to find active index
-    const sessionList = selectSessionList(useSessionStore.getState())
-    const activeIndex = activeSessionId
-      ? sessionList.findIndex((s) => s.id === activeSessionId)
-      : 0
-    const clampedIndex = activeIndex >= 0 ? activeIndex : 0
+    const writeURL = () => {
+      if (isInitializing.current) return
 
-    const params = buildSessionParams(sessionCount, clampedIndex)
-    window.history.replaceState({}, '', '?' + params)
-  }, [sessionCount, activeSessionId])
+      const ws = useWorkspaceStore.getState()
+      const sessions = useSessionStore.getState().sessions
+
+      if (ws.items.length === 0) {
+        window.history.replaceState({}, '', window.location.pathname)
+        return
+      }
+
+      try {
+        const schema = buildWorkspaceSchema(ws.items, ws.activeItemId, sessions)
+        if (!schema) return // Pending sessions, skip
+        const params = buildWorkspaceURL(schema)
+        window.history.replaceState({}, '', '?' + params)
+      } catch {
+        // Silently fail on serialization errors
+      }
+    }
+
+    writeURLRef.current = writeURL
+
+    const debouncedWrite = () => {
+      if (timeoutId) clearTimeout(timeoutId)
+      timeoutId = setTimeout(writeURL, 300)
+    }
+
+    const unsub1 = useWorkspaceStore.subscribe(debouncedWrite)
+    const unsub2 = useSessionStore.subscribe(debouncedWrite)
+
+    return () => {
+      unsub1()
+      unsub2()
+      if (timeoutId) clearTimeout(timeoutId)
+      writeURLRef.current = null
+    }
+  }, [])
 
   return {
     showConfirmDialog,

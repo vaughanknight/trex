@@ -31,11 +31,13 @@ import { SidebarProvider } from '@/components/ui/sidebar'
 import { SessionSidebar } from '@/components/SessionSidebar'
 import { useSessionStore } from '@/stores/sessions'
 import { useUIStore } from '@/stores/ui'
+import { useWorkspaceStore } from '@/stores/workspace'
 
 describe('SessionSidebar', () => {
   beforeEach(() => {
     useSessionStore.getState().clearSessions()
-    useUIStore.setState({ activeSessionId: null, sidebarCollapsed: false })
+    useWorkspaceStore.setState({ items: [], activeItemId: null })
+    useUIStore.setState({ sidebarCollapsed: false })
   })
 
   it('renders within SidebarProvider', () => {

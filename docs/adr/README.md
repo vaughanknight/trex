@@ -21,6 +21,9 @@ An ADR documents a significant architectural decision, including:
 | [ADR-0005](./0005-opentelemetry-for-observability.md) | OpenTelemetry for observability | Accepted | 2026-02-04 | CS-2 |
 | [ADR-0006](./0006-xdg-compliant-configuration.md) | XDG-compliant configuration | Accepted | 2026-02-04 | CS-1 |
 | [ADR-0007](./0007-agent-navigable-documentation.md) | Agent-navigable documentation | Accepted | 2026-02-04 | CS-1 |
+| [ADR-0008](./0008-split-panel-library.md) | react-resizable-panels for split pane layout | Accepted | 2026-02-10 | CS-2 |
+| [ADR-0009](./0009-dnd-library.md) | @atlaskit/pragmatic-drag-and-drop for pane splitting DnD | Accepted | 2026-02-10 | CS-2 |
+| [ADR-0010](./0010-url-layout-format.md) | URI-safe compact prefix notation for URL layout encoding | Accepted | 2026-02-10 | CS-2 |
 
 ## Status Definitions
 

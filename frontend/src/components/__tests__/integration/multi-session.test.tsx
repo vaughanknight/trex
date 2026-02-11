@@ -13,18 +13,32 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSessionStore, type Session } from '@/stores/sessions'
-import { useUIStore } from '@/stores/ui'
+import { useWorkspaceStore, selectActiveSessionId } from '@/stores/workspace'
+
+/** Helper: add a session to the workspace and make it active */
+function activateSession(sessionId: string): string {
+  const ws = useWorkspaceStore.getState()
+  const itemId = ws.addSessionItem(sessionId)
+  ws.setActiveItem(itemId)
+  return itemId
+}
+
+/** Helper: get the active session ID via the derived selector */
+function getActiveSessionId(): string | null {
+  return selectActiveSessionId(useWorkspaceStore.getState())
+}
 
 describe('Multi-Session Integration', () => {
   // Reset stores before each test
   beforeEach(() => {
     useSessionStore.getState().clearSessions()
-    useUIStore.getState().setActiveSession(null)
+    useWorkspaceStore.setState({ items: [], activeItemId: null })
   })
 
   const createMockSession = (id: string, name: string): Session => ({
     id,
     name,
+    originalName: name,
     shellType: 'bash',
     status: 'active',
     createdAt: Date.now(),
@@ -45,41 +59,48 @@ describe('Multi-Session Integration', () => {
       const session = createMockSession('session-1', 'bash-1')
 
       useSessionStore.getState().addSession(session)
-      useUIStore.getState().setActiveSession('session-1')
+      activateSession('session-1')
 
-      expect(useUIStore.getState().activeSessionId).toBe('session-1')
+      expect(getActiveSessionId()).toBe('session-1')
     })
   })
 
   describe('Given multiple sessions', () => {
+    // Track workspace item IDs so we can switch between them
+    const itemIds: Record<string, string> = {}
+
     beforeEach(() => {
-      useSessionStore.getState().addSession(createMockSession('session-1', 'bash-1'))
-      useSessionStore.getState().addSession(createMockSession('session-2', 'zsh-1'))
-      useSessionStore.getState().addSession(createMockSession('session-3', 'bash-2'))
-      useSessionStore.getState().addSession(createMockSession('session-4', 'zsh-2'))
-      useSessionStore.getState().addSession(createMockSession('session-5', 'fish-1'))
-      useUIStore.getState().setActiveSession('session-1')
+      for (let i = 1; i <= 5; i++) {
+        const sid = `session-${i}`
+        const names = ['bash-1', 'zsh-1', 'bash-2', 'zsh-2', 'fish-1']
+        useSessionStore.getState().addSession(createMockSession(sid, names[i - 1]))
+        itemIds[sid] = useWorkspaceStore.getState().addSessionItem(sid)
+      }
+      useWorkspaceStore.getState().setActiveItem(itemIds['session-1'])
     })
 
     it('When switching sessions Then active session updates', () => {
-      useUIStore.getState().setActiveSession('session-3')
+      useWorkspaceStore.getState().setActiveItem(itemIds['session-3'])
 
-      expect(useUIStore.getState().activeSessionId).toBe('session-3')
+      expect(getActiveSessionId()).toBe('session-3')
     })
 
-    it('When closing active session Then active is cleared', () => {
+    it('When closing active session Then active auto-selects next', () => {
       useSessionStore.getState().removeSession('session-1')
-      // Simulate UI behavior: clear active when closing active session
-      useUIStore.getState().setActiveSession(null)
+      // Workspace removeItem auto-selects next item
+      useWorkspaceStore.getState().removeItem(itemIds['session-1'])
 
-      expect(useUIStore.getState().activeSessionId).toBeNull()
+      // removeItem auto-selects a neighbor, so active should not be null
+      // (there are still 4 items)
+      expect(getActiveSessionId()).not.toBeNull()
       expect(useSessionStore.getState().sessions.size).toBe(4)
     })
 
     it('When closing non-active session Then active is preserved', () => {
       useSessionStore.getState().removeSession('session-3')
+      useWorkspaceStore.getState().removeItem(itemIds['session-3'])
 
-      expect(useUIStore.getState().activeSessionId).toBe('session-1')
+      expect(getActiveSessionId()).toBe('session-1')
       expect(useSessionStore.getState().sessions.size).toBe(4)
     })
 
@@ -96,14 +117,14 @@ describe('Multi-Session Integration', () => {
     it('When switching rapidly Then state remains consistent', () => {
       // Simulate rapid switching
       for (let i = 1; i <= 5; i++) {
-        useUIStore.getState().setActiveSession(`session-${i}`)
+        useWorkspaceStore.getState().setActiveItem(itemIds[`session-${i}`])
       }
       for (let i = 5; i >= 1; i--) {
-        useUIStore.getState().setActiveSession(`session-${i}`)
+        useWorkspaceStore.getState().setActiveItem(itemIds[`session-${i}`])
       }
 
       // State should be consistent
-      expect(useUIStore.getState().activeSessionId).toBe('session-1')
+      expect(getActiveSessionId()).toBe('session-1')
       expect(useSessionStore.getState().sessions.size).toBe(5)
     })
   })
@@ -113,29 +134,30 @@ describe('Multi-Session Integration', () => {
       // 1. Create first session
       const session1 = createMockSession('ws-1', 'bash-1')
       useSessionStore.getState().addSession(session1)
-      useUIStore.getState().setActiveSession('ws-1')
-      expect(useUIStore.getState().activeSessionId).toBe('ws-1')
+      const item1 = activateSession('ws-1')
+      expect(getActiveSessionId()).toBe('ws-1')
 
       // 2. Create second session
       const session2 = createMockSession('ws-2', 'zsh-1')
       useSessionStore.getState().addSession(session2)
-      useUIStore.getState().setActiveSession('ws-2')
-      expect(useUIStore.getState().activeSessionId).toBe('ws-2')
+      const item2 = activateSession('ws-2')
+      expect(getActiveSessionId()).toBe('ws-2')
 
       // 3. Switch back to first
-      useUIStore.getState().setActiveSession('ws-1')
-      expect(useUIStore.getState().activeSessionId).toBe('ws-1')
+      useWorkspaceStore.getState().setActiveItem(item1)
+      expect(getActiveSessionId()).toBe('ws-1')
 
       // 4. Close second session (non-active)
       useSessionStore.getState().removeSession('ws-2')
+      useWorkspaceStore.getState().removeItem(item2)
       expect(useSessionStore.getState().sessions.size).toBe(1)
-      expect(useUIStore.getState().activeSessionId).toBe('ws-1')
+      expect(getActiveSessionId()).toBe('ws-1')
 
       // 5. Close first session (active)
       useSessionStore.getState().removeSession('ws-1')
-      useUIStore.getState().setActiveSession(null)
+      useWorkspaceStore.getState().removeItem(item1)
       expect(useSessionStore.getState().sessions.size).toBe(0)
-      expect(useUIStore.getState().activeSessionId).toBeNull()
+      expect(getActiveSessionId()).toBeNull()
     })
   })
 

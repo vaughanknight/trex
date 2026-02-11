@@ -8,13 +8,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { useSessionStore } from '@/stores/sessions'
-import { useUIStore } from '@/stores/ui'
+import { useWorkspaceStore, selectActiveSessionId } from '@/stores/workspace'
 
 // Test the actions that context menu would trigger
 describe('Context menu session actions', () => {
   beforeEach(() => {
     useSessionStore.getState().clearSessions()
-    useUIStore.setState({ activeSessionId: null })
+    useWorkspaceStore.setState({ items: [], activeItemId: null })
   })
 
   describe('rename session action', () => {
@@ -53,7 +53,7 @@ describe('Context menu session actions', () => {
       expect(useSessionStore.getState().sessions.has('s1')).toBe(false)
     })
 
-    it('clears activeSessionId if closed session was active', () => {
+    it('clears active session if closed session was active', () => {
       const sessionStore = useSessionStore.getState()
       sessionStore.addSession({
         id: 's1',
@@ -64,18 +64,20 @@ describe('Context menu session actions', () => {
         userRenamed: false,
       })
 
-      useUIStore.getState().setActiveSession('s1')
-      expect(useUIStore.getState().activeSessionId).toBe('s1')
+      const ws = useWorkspaceStore.getState()
+      const itemId = ws.addSessionItem('s1')
+      ws.setActiveItem(itemId)
+      expect(selectActiveSessionId(useWorkspaceStore.getState())).toBe('s1')
 
       // In real implementation, closing session should clear active if it matches
       // This tests the pattern we'll use in SessionContextMenu
-      const activeId = useUIStore.getState().activeSessionId
-      if (activeId === 's1') {
-        useUIStore.getState().setActiveSession(null)
+      const activeSessionId = selectActiveSessionId(useWorkspaceStore.getState())
+      if (activeSessionId === 's1') {
+        useWorkspaceStore.getState().removeItem(itemId)
       }
       sessionStore.removeSession('s1')
 
-      expect(useUIStore.getState().activeSessionId).toBe(null)
+      expect(selectActiveSessionId(useWorkspaceStore.getState())).toBe(null)
     })
   })
 

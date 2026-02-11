@@ -2,12 +2,12 @@
  * NewSessionButton - Creates new terminal session via WebSocket.
  *
  * Per Phase 5: Sends "create" message via central WebSocket.
- * On session_created response, adds session to store and sets as active.
+ * On session_created response, adds session to store and workspace, sets as active.
  */
 import { Plus } from 'lucide-react'
 import { SidebarMenuButton } from '@/components/ui/sidebar'
 import { useSessionStore } from '@/stores/sessions'
-import { useUIStore } from '@/stores/ui'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { useCentralWebSocket } from '@/hooks/useCentralWebSocket'
 
 // Counter for generating unique session names when shellType is the same
@@ -15,7 +15,6 @@ const shellCounters = new Map<string, number>()
 
 export function NewSessionButton() {
   const addSession = useSessionStore(state => state.addSession)
-  const setActiveSession = useUIStore(state => state.setActiveSession)
   const { createSession } = useCentralWebSocket()
 
   const handleClick = () => {
@@ -36,7 +35,9 @@ export function NewSessionButton() {
       }
 
       addSession(newSession)
-      setActiveSession(sessionId)
+      // Add as workspace standalone session and set active
+      const itemId = useWorkspaceStore.getState().addSessionItem(sessionId)
+      useWorkspaceStore.getState().setActiveItem(itemId)
     })
   }
 

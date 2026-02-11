@@ -42,6 +42,18 @@ topic_index:
   navigation: "0007"
   agent: "0007"
   index: "0007"
+  split-panels: "0008"
+  resize: "0008"
+  react-resizable-panels: "0008"
+  layout: "0008"
+  drag-and-drop: "0009"
+  dnd: "0009"
+  atlaskit: "0009"
+  pragmatic-drag-and-drop: "0009"
+  url-layout: "0010"
+  serialization: "0010"
+  layout-codec: "0010"
+  url-format: "0010"
 
 files:
   - path: "template.md"
@@ -82,6 +94,21 @@ files:
     summary: "YAML indexes for LLM agent documentation navigation"
     keywords: [agent, llm, navigation, index, documentation]
     complexity: CS-1
+
+  - path: "0008-split-panel-library.md"
+    summary: "react-resizable-panels chosen for split pane layout rendering"
+    keywords: [split-panels, resize, react-resizable-panels, layout, ui]
+    complexity: CS-2
+
+  - path: "0009-dnd-library.md"
+    summary: "@atlaskit/pragmatic-drag-and-drop chosen for pane splitting drag-and-drop"
+    keywords: [drag-and-drop, dnd, atlaskit, pragmatic-drag-and-drop, pane-splitting]
+    complexity: CS-2
+
+  - path: "0010-url-layout-format.md"
+    summary: "URI-safe compact prefix notation for URL layout encoding"
+    keywords: [url, serialization, layout, codec, url-format, prefix-notation]
+    complexity: CS-2
 
   - path: "README.md"
     summary: "Human-readable ADR index and status definitions"

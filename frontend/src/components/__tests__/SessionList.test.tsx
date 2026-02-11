@@ -8,7 +8,7 @@
  * Contract:
  * - SessionList renders all sessions from useSessionStore
  * - Sessions are sorted by createdAt (oldest first)
- * - Clicking a session sets it as activeSessionId in useUIStore
+ * - Clicking a session activates it in useWorkspaceStore
  * - Empty state shows helpful message when no sessions exist
  *
  * Usage Notes:
@@ -28,13 +28,13 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { useSessionStore } from '@/stores/sessions'
-import { useUIStore } from '@/stores/ui'
+import { useWorkspaceStore, selectActiveSessionId } from '@/stores/workspace'
 import { SessionList } from '@/components/SessionList'
 
 describe('SessionList', () => {
   beforeEach(() => {
     useSessionStore.getState().clearSessions()
-    useUIStore.setState({ activeSessionId: null })
+    useWorkspaceStore.setState({ items: [], activeItemId: null })
   })
 
   describe('given no sessions', () => {
@@ -68,6 +68,7 @@ describe('SessionList', () => {
       )
 
       expect(screen.getByText('bash-1')).toBeInTheDocument()
+      // Sessions not in workspace appear under "Sessions" group
       expect(screen.getByText('Sessions (1)')).toBeInTheDocument()
     })
 
@@ -118,7 +119,8 @@ describe('SessionList', () => {
       )
 
       fireEvent.click(screen.getByText('bash-1'))
-      expect(useUIStore.getState().activeSessionId).toBe('s1')
+      // SessionItem now uses workspace store — clicking creates a workspace item and activates it
+      expect(selectActiveSessionId(useWorkspaceStore.getState())).toBe('s1')
     })
   })
 })

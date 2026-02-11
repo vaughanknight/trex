@@ -133,6 +133,7 @@ export const useSessionStore = create<SessionsStore>((set) => ({
   clearSessions: () => set({ sessions: new Map() }),
 }))
 
+
 // Selectors for fine-grained subscriptions
 
 /** Select a single session by ID */

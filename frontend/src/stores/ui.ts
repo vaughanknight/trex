@@ -2,10 +2,9 @@
  * UI Store - Manages UI state for the application.
  *
  * Persists: sidebarCollapsed, sidebarPinned
- * Transient (not persisted): activeSessionId, settingsPanelOpen
+ * Transient (not persisted): settingsPanelOpen
  *
- * Per Insight 6 decision: Use partialize to persist only layout preferences,
- * not runtime session state.
+ * Note: activeSessionId has been migrated to workspace store (Plan 016).
  */
 
 import { create } from 'zustand'
@@ -13,7 +12,6 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 
 export interface UIState {
   // Transient (not persisted)
-  activeSessionId: string | null
   settingsPanelOpen: boolean
 
   // Persisted
@@ -22,7 +20,6 @@ export interface UIState {
 }
 
 export interface UIActions {
-  setActiveSession: (id: string | null) => void
   toggleSidebar: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
   toggleSidebarPin: () => void
@@ -35,7 +32,6 @@ export interface UIActions {
 export type UIStore = UIState & UIActions
 
 const initialState: UIState = {
-  activeSessionId: null,
   settingsPanelOpen: false,
   sidebarCollapsed: false,
   sidebarPinned: true,
@@ -45,8 +41,6 @@ export const useUIStore = create<UIStore>()(
   persist(
     (set) => ({
       ...initialState,
-
-      setActiveSession: (id) => set({ activeSessionId: id }),
 
       toggleSidebar: () =>
         set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
@@ -77,7 +71,6 @@ export const useUIStore = create<UIStore>()(
 )
 
 // Selectors for fine-grained subscriptions
-export const selectActiveSessionId = (state: UIStore) => state.activeSessionId
 export const selectSidebarCollapsed = (state: UIStore) => state.sidebarCollapsed
 export const selectSidebarPinned = (state: UIStore) => state.sidebarPinned
 export const selectSettingsPanelOpen = (state: UIStore) => state.settingsPanelOpen

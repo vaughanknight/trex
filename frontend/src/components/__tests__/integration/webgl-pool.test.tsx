@@ -3,7 +3,7 @@
  * @description Integration tests for WebGL pool and Terminal component.
  *
  * Test Doc: Validates that Terminal.tsx correctly acquires/releases WebGL
- * from the pool based on isActive state. Uses fakes per ADR-0004.
+ * from the pool based on isFocused state. Uses fakes per ADR-0004.
  */
 
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
@@ -106,7 +106,7 @@ describe('WebGL Pool Integration', () => {
       const sessionId = 'test-session-1'
 
       // Render terminal with isActive=true
-      render(<Terminal sessionId={sessionId} isActive={true} />)
+      render(<Terminal sessionId={sessionId} isFocused={true} />)
 
       // Wait for effects to run
       await act(async () => {
@@ -131,7 +131,7 @@ describe('WebGL Pool Integration', () => {
       const sessionId = 'test-session-inactive'
 
       // Render terminal with isActive=false
-      render(<Terminal sessionId={sessionId} isActive={false} />)
+      render(<Terminal sessionId={sessionId} isFocused={false} />)
 
       // Wait for effects
       await act(async () => {
@@ -159,7 +159,7 @@ describe('WebGL Pool Integration', () => {
 
       // Render active terminal
       const { rerender } = render(
-        <Terminal sessionId={sessionId} isActive={true} />
+        <Terminal sessionId={sessionId} isFocused={true} />
       )
 
       // Wait for acquire
@@ -171,7 +171,7 @@ describe('WebGL Pool Integration', () => {
       expect(useWebGLPoolStore.getState().hasWebGL(sessionId)).toBe(true)
 
       // Deactivate terminal
-      rerender(<Terminal sessionId={sessionId} isActive={false} />)
+      rerender(<Terminal sessionId={sessionId} isFocused={false} />)
 
       // Wait for release
       await act(async () => {
@@ -201,8 +201,8 @@ describe('WebGL Pool Integration', () => {
       // Render Terminal A as active
       const { rerender } = render(
         <>
-          <Terminal sessionId={sessionA} isActive={true} />
-          <Terminal sessionId={sessionB} isActive={false} />
+          <Terminal sessionId={sessionA} isFocused={true} />
+          <Terminal sessionId={sessionB} isFocused={false} />
         </>
       )
 
@@ -217,8 +217,8 @@ describe('WebGL Pool Integration', () => {
       // Switch to B
       rerender(
         <>
-          <Terminal sessionId={sessionA} isActive={false} />
-          <Terminal sessionId={sessionB} isActive={true} />
+          <Terminal sessionId={sessionA} isFocused={false} />
+          <Terminal sessionId={sessionB} isFocused={true} />
         </>
       )
 
@@ -249,7 +249,7 @@ describe('WebGL Pool Integration', () => {
 
       // Render active terminal
       const { unmount } = render(
-        <Terminal sessionId={sessionId} isActive={true} />
+        <Terminal sessionId={sessionId} isFocused={true} />
       )
 
       // Wait for acquire
@@ -289,8 +289,8 @@ describe('WebGL Pool Integration', () => {
 
       const { rerender } = render(
         <>
-          <Terminal sessionId={sessionA} isActive={true} />
-          <Terminal sessionId={sessionB} isActive={false} />
+          <Terminal sessionId={sessionA} isFocused={true} />
+          <Terminal sessionId={sessionB} isFocused={false} />
         </>
       )
 
@@ -299,8 +299,8 @@ describe('WebGL Pool Integration', () => {
         const aActive = i % 2 === 0
         rerender(
           <>
-            <Terminal sessionId={sessionA} isActive={aActive} />
-            <Terminal sessionId={sessionB} isActive={!aActive} />
+            <Terminal sessionId={sessionA} isFocused={aActive} />
+            <Terminal sessionId={sessionB} isFocused={!aActive} />
           </>
         )
         // Small delay to allow effects to process
@@ -335,7 +335,7 @@ describe('WebGL Pool Integration', () => {
       const sessionId = 'test-session-context-loss'
 
       // Render active terminal
-      render(<Terminal sessionId={sessionId} isActive={true} />)
+      render(<Terminal sessionId={sessionId} isFocused={true} />)
 
       // Wait for acquire
       await act(async () => {
@@ -373,7 +373,7 @@ describe('WebGL Pool Integration', () => {
       const session2 = 'session-exhaust-2'
 
       // First acquire to trigger detection
-      render(<Terminal sessionId={session1} isActive={true} />)
+      render(<Terminal sessionId={session1} isFocused={true} />)
       await act(async () => {
         await new Promise((r) => setTimeout(r, 50))
       })
@@ -382,7 +382,7 @@ describe('WebGL Pool Integration', () => {
       useWebGLPoolStore.getState().setMaxSize(1)
 
       // Render second active terminal (should not get WebGL)
-      render(<Terminal sessionId={session2} isActive={true} />)
+      render(<Terminal sessionId={session2} isFocused={true} />)
       await act(async () => {
         await new Promise((r) => setTimeout(r, 50))
       })

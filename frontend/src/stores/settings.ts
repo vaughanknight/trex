@@ -155,15 +155,20 @@ export const useSettingsStore = create<SettingsStore>()(
       name: 'trex-settings',
       storage: createJSONStorage(() => localStorage),
       // Merge with defaults to handle new fields added in future versions
-      merge: (persisted, current) => ({
-        ...current,
-        ...(persisted as Partial<SettingsState>),
-        // Ensure idleThresholds has all fields even if persisted state is old
-        idleThresholds: {
-          ...DEFAULT_THRESHOLDS,
-          ...((persisted as Partial<SettingsState>)?.idleThresholds ?? {}),
-        },
-      }),
+      merge: (persisted, current) => {
+        const p = persisted as Record<string, unknown> | undefined
+        // Clean stale keys removed in Plan 016
+        if (p) delete p.paneSplittingEnabled
+        return {
+          ...current,
+          ...(p as Partial<SettingsState>),
+          // Ensure idleThresholds has all fields even if persisted state is old
+          idleThresholds: {
+            ...DEFAULT_THRESHOLDS,
+            ...((p as Partial<SettingsState>)?.idleThresholds ?? {}),
+          },
+        }
+      },
     }
   )
 )

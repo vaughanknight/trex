@@ -6,13 +6,13 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { useSessionStore } from '@/stores/sessions'
-import { useUIStore } from '@/stores/ui'
+import { useWorkspaceStore, selectActiveSessionId } from '@/stores/workspace'
 import { SessionList } from '@/components/SessionList'
 
 describe('SessionList with sessions', () => {
   beforeEach(() => {
     useSessionStore.getState().clearSessions()
-    useUIStore.setState({ activeSessionId: null })
+    useWorkspaceStore.setState({ items: [], activeItemId: null })
   })
 
   it('renders session items from store', () => {
@@ -24,6 +24,8 @@ describe('SessionList with sessions', () => {
       createdAt: Date.now(),
       userRenamed: false,
     })
+    // Add to workspace so it appears under "Workspace" section
+    useWorkspaceStore.getState().addSessionItem('s1')
 
     render(
       <SidebarProvider>
@@ -53,6 +55,9 @@ describe('SessionList with sessions', () => {
       createdAt: 1000,
       userRenamed: false,
     })
+    // Add both to workspace in order
+    useWorkspaceStore.getState().addSessionItem('s1')
+    useWorkspaceStore.getState().addSessionItem('s2')
 
     render(
       <SidebarProvider>
@@ -61,7 +66,7 @@ describe('SessionList with sessions', () => {
     )
 
     const items = screen.getAllByRole('listitem')
-    // First item should be bash-first (earlier createdAt)
+    // Workspace items are shown in workspace order (s1 added first, then s2)
     expect(items[0]).toHaveTextContent('bash-first')
     expect(items[1]).toHaveTextContent('zsh-later')
   })
@@ -75,6 +80,8 @@ describe('SessionList with sessions', () => {
       createdAt: Date.now(),
       userRenamed: false,
     })
+    // Add to workspace so click handler can find the workspace item
+    useWorkspaceStore.getState().addSessionItem('s1')
 
     render(
       <SidebarProvider>
@@ -83,6 +90,6 @@ describe('SessionList with sessions', () => {
     )
 
     fireEvent.click(screen.getByText('bash-1'))
-    expect(useUIStore.getState().activeSessionId).toBe('s1')
+    expect(selectActiveSessionId(useWorkspaceStore.getState())).toBe('s1')
   })
 })

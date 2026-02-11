@@ -383,4 +383,5 @@ describe('useSettingsStore', () => {
     expect(thresholds.active).toBe(DEFAULT_THRESHOLDS.active)
     expect(thresholds.recent).toBe(DEFAULT_THRESHOLDS.recent)
   })
+
 })

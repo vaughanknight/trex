@@ -12,6 +12,7 @@ import { FontSizeSlider } from './FontSizeSlider'
 import { IdleThresholdSettings } from './IdleThresholdSettings'
 import { URLSessionSettings } from './URLSessionSettings'
 import { TmuxSettings } from './TmuxSettings'
+import { OutputIntervalSlider } from './OutputIntervalSlider'
 
 interface SettingsPanelProps {
   open: boolean
@@ -65,6 +66,11 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         {/* URL Sessions */}
         <div className="space-y-2">
           <URLSessionSettings />
+        </div>
+
+        {/* Unfocused Pane Output */}
+        <div className="space-y-2">
+          <OutputIntervalSlider />
         </div>
 
         {/* tmux Detection */}

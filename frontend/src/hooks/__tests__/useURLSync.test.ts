@@ -56,6 +56,7 @@ function createURLSyncTestEnv(options?: {
     urlConfirmAlways: false,
     urlConfirmThreshold: 5,
     tmuxPollingInterval: 2000,
+    unfocusedOutputInterval: 50,
   }
 
   const useSettings = create<SettingsState & SettingsActions>()(
@@ -74,6 +75,9 @@ function createURLSyncTestEnv(options?: {
         }),
         setTmuxPollingInterval: (interval: number) => set({
           tmuxPollingInterval: Math.max(500, Math.min(30000, interval)),
+        }),
+        setUnfocusedOutputInterval: (interval: number) => set({
+          unfocusedOutputInterval: Math.max(50, Math.min(1000, interval)),
         }),
         reset: () => set(defaultSettings),
       }),

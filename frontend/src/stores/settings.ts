@@ -61,6 +61,8 @@ export interface SettingsState {
   urlConfirmThreshold: number
   /** tmux polling interval in milliseconds (500-30000, step 500) */
   tmuxPollingInterval: number
+  /** Output flush interval for unfocused panes in milliseconds (50-1000) */
+  unfocusedOutputInterval: number
 }
 
 export interface SettingsActions {
@@ -78,6 +80,8 @@ export interface SettingsActions {
   setUrlConfirmThreshold: (threshold: number) => void
   /** Set tmux polling interval in ms (clamped 500-30000) */
   setTmuxPollingInterval: (interval: number) => void
+  /** Set unfocused output flush interval in ms (clamped 50-1000) */
+  setUnfocusedOutputInterval: (interval: number) => void
   reset: () => void
 }
 
@@ -93,6 +97,7 @@ const defaultSettings: SettingsState = {
   urlConfirmAlways: false,
   urlConfirmThreshold: 5,
   tmuxPollingInterval: 2000,
+  unfocusedOutputInterval: 50,
 }
 
 /** Minimum threshold value in milliseconds (1 second) */
@@ -149,6 +154,10 @@ export const useSettingsStore = create<SettingsStore>()(
         tmuxPollingInterval: Math.max(500, Math.min(30000, interval)),
       }),
 
+      setUnfocusedOutputInterval: (interval) => set({
+        unfocusedOutputInterval: Math.max(50, Math.min(1000, interval)),
+      }),
+
       reset: () => set(defaultSettings),
     }),
     {
@@ -183,6 +192,7 @@ export const selectIdleIndicatorsEnabled = (state: SettingsStore) => state.idleI
 export const selectUrlConfirmAlways = (state: SettingsStore) => state.urlConfirmAlways
 export const selectUrlConfirmThreshold = (state: SettingsStore) => state.urlConfirmThreshold
 export const selectTmuxPollingInterval = (state: SettingsStore) => state.tmuxPollingInterval
+export const selectUnfocusedOutputInterval = (state: SettingsStore) => state.unfocusedOutputInterval
 
 // Re-export IdleThresholds type for consumers
 export type { IdleThresholds }

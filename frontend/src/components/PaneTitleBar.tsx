@@ -104,27 +104,45 @@ export function PaneTitleBar({ itemId, paneId, sessionId, isFocused, variant = '
     }
   }, [variant, closeSession, removeSession, closePane, itemId, paneId, sessionId])
 
+  const addSession = useSessionStore((state) => state.addSession)
+
   const handleSplitH = useCallback(() => {
     if (atCap) return
-    createSession((newSessionId: string) => {
+    createSession((newSessionId: string, shellType: string) => {
+      addSession({
+        id: newSessionId,
+        name: shellType,
+        shellType,
+        status: 'active',
+        createdAt: Date.now(),
+        userRenamed: false,
+      })
       if (variant === 'standalone') {
         convertToLayout(itemId, 'h', newSessionId)
       } else {
         splitPane(itemId, paneId, 'h', newSessionId)
       }
     })
-  }, [atCap, variant, createSession, convertToLayout, splitPane, itemId, paneId])
+  }, [atCap, variant, createSession, addSession, convertToLayout, splitPane, itemId, paneId])
 
   const handleSplitV = useCallback(() => {
     if (atCap) return
-    createSession((newSessionId: string) => {
+    createSession((newSessionId: string, shellType: string) => {
+      addSession({
+        id: newSessionId,
+        name: shellType,
+        shellType,
+        status: 'active',
+        createdAt: Date.now(),
+        userRenamed: false,
+      })
       if (variant === 'standalone') {
         convertToLayout(itemId, 'v', newSessionId)
       } else {
         splitPane(itemId, paneId, 'v', newSessionId)
       }
     })
-  }, [atCap, variant, createSession, convertToLayout, splitPane, itemId, paneId])
+  }, [atCap, variant, createSession, addSession, convertToLayout, splitPane, itemId, paneId])
 
   const handleEject = useCallback(() => {
     detachPane(itemId, paneId)

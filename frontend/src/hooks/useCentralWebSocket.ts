@@ -136,6 +136,13 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 // Callback for session creation
 type SessionCreatedCallback = (sessionId: string, shellType: string) => void
 
+// Shared callback queue for session creation across all hook instances.
+// Must be module-level (not per-instance useRef) because the WebSocket is a
+// singleton in the Zustand store, but multiple components call createSession().
+// The onmessage handler set by the first caller must be able to dequeue
+// callbacks pushed by any component.
+const pendingSessionCallbacks: SessionCreatedCallback[] = []
+
 interface UseCentralWebSocketReturn {
   connectionState: ConnectionState
   connect: () => void
@@ -154,8 +161,6 @@ interface UseCentralWebSocketReturn {
  */
 export function useCentralWebSocket(): UseCentralWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null)
-  // Use a queue instead of single ref to handle rapid session creation (spam clicking)
-  const pendingSessionCallbacksRef = useRef<SessionCreatedCallback[]>([])
 
   // Use individual selectors for stable references (prevents infinite re-renders)
   const connectionState = useWebSocketStore((state) => state.connectionState)
@@ -174,8 +179,18 @@ export function useCentralWebSocket(): UseCentralWebSocketReturn {
 
   // Connect to WebSocket (lazy - called explicitly)
   const connect = useCallback(() => {
-    // Already connected or connecting
+    // Already connected or connecting (check local ref)
     if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+      return
+    }
+
+    // Also check store's ws — another component instance may have already connected.
+    // useCentralWebSocket uses per-instance wsRef, but the WebSocket is a singleton
+    // stored in Zustand. Without this check, each component that calls connect()
+    // would create a duplicate WebSocket and flash connectionState to 'connecting'.
+    const existingWs = useWebSocketStore.getState().ws
+    if (existingWs && existingWs.readyState !== WebSocket.CLOSED) {
+      wsRef.current = existingWs
       return
     }
 
@@ -195,7 +210,7 @@ export function useCentralWebSocket(): UseCentralWebSocketReturn {
         // Handle session_created response
         if (msg.type === 'session_created' && msg.sessionId) {
           // Dequeue the first pending callback (FIFO order matches server responses)
-          const callback = pendingSessionCallbacksRef.current.shift()
+          const callback = pendingSessionCallbacks.shift()
           if (callback) {
             callback(msg.sessionId, msg.shellType || 'sh')
           }
@@ -260,7 +275,12 @@ export function useCentralWebSocket(): UseCentralWebSocketReturn {
   const createSession = useCallback(
     (onSessionCreated: SessionCreatedCallback) => {
       // Queue callback for when session_created response arrives (supports rapid creation)
-      pendingSessionCallbacksRef.current.push(onSessionCreated)
+      pendingSessionCallbacks.push(onSessionCreated)
+
+      // Sync local ref from store (may have been created by another component instance)
+      if (!wsRef.current) {
+        wsRef.current = useWebSocketStore.getState().ws
+      }
 
       // Connect if not already connected
       if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
@@ -278,6 +298,17 @@ export function useCentralWebSocket(): UseCentralWebSocketReturn {
       } else if (wsRef.current.readyState === WebSocket.OPEN) {
         const msg: ClientMessage = { type: 'create' }
         wsRef.current.send(JSON.stringify(msg))
+      } else if (wsRef.current.readyState === WebSocket.CONNECTING) {
+        // WebSocket is connecting (e.g. rapid-fire session creates during URL restore).
+        // Poll until OPEN, then send the create message.
+        const checkConnection = setInterval(() => {
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            clearInterval(checkConnection)
+            const msg: ClientMessage = { type: 'create' }
+            wsRef.current.send(JSON.stringify(msg))
+          }
+        }, 50)
+        setTimeout(() => clearInterval(checkConnection), 5000)
       }
     },
     [connect]

@@ -85,9 +85,19 @@ export function PaneContainer({ itemId, paneId, sessionId, isFocused, showTitleB
     }
   }, [variant, closeSession, removeSession, closePane, itemId, paneId, sessionId])
 
+  const addSession = useSessionStore((state) => state.addSession)
+
   // Restart handler for session exit overlay
   const handleOverlayRestart = useCallback(() => {
-    createSession((newSessionId: string) => {
+    createSession((newSessionId: string, shellType: string) => {
+      addSession({
+        id: newSessionId,
+        name: shellType,
+        shellType,
+        status: 'active',
+        createdAt: Date.now(),
+        userRenamed: false,
+      })
       if (variant === 'standalone') {
         // Remove old workspace item, add new one, set active
         const ws = useWorkspaceStore.getState()
@@ -99,7 +109,7 @@ export function PaneContainer({ itemId, paneId, sessionId, isFocused, showTitleB
         replaceSessionInPane(itemId, paneId, newSessionId)
       }
     })
-  }, [variant, createSession, replaceSessionInPane, itemId, paneId])
+  }, [variant, createSession, addSession, replaceSessionInPane, itemId, paneId])
 
   return (
     <div

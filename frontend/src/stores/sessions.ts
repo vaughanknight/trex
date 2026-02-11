@@ -10,6 +10,7 @@
  */
 
 import { create } from 'zustand'
+import { disposeCachedTerminal } from '../lib/terminalCache'
 
 export type SessionStatus = 'connecting' | 'active' | 'paused' | 'exited'
 
@@ -59,12 +60,15 @@ export const useSessionStore = create<SessionsStore>((set) => ({
       return { sessions: newMap }
     }),
 
-  removeSession: (id) =>
+  removeSession: (id) => {
+    // Dispose any cached terminal instance (from panel restructuring cache)
+    disposeCachedTerminal(id)
     set((state) => {
       const newMap = new Map(state.sessions)
       newMap.delete(id)
       return { sessions: newMap }
-    }),
+    })
+  },
 
   updateStatus: (id, status) =>
     set((state) => {

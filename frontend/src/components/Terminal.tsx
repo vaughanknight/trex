@@ -10,6 +10,7 @@ import { useSessionStore } from '../stores/sessions'
 import { getThemeById } from '../themes'
 import { useWebGLPoolStore } from '../stores/webglPool'
 import { type IWebglAddon } from '../test/fakeWebglAddon'
+import { getCachedTerminal, cacheTerminal, removeCachedTerminal } from '../lib/terminalCache'
 import { useThemePreview } from '../contexts/ThemePreviewContext'
 
 interface TerminalProps {
@@ -39,6 +40,8 @@ export function Terminal({
   const xtermRef = useRef<XTerm | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const webglAddonRef = useRef<IWebglAddon | null>(null)
+  // Container div for xterm DOM (we own this, not React — enables caching across remounts)
+  const xtermContainerRef = useRef<HTMLDivElement | null>(null)
   // Per-instance debounce timer for resize events (moved from module-level to fix multi-instance bug)
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Cache container dimensions to skip fit() when size hasn't changed
@@ -139,27 +142,48 @@ export function Terminal({
     }
   }, [sessionId, onOutput, onError, onExit, registerSession, unregisterSession])
 
-  // Initialize xterm.js
+  // Initialize xterm.js (with caching to survive React remounts from panel restructuring)
   useEffect(() => {
     if (!containerRef.current) return
 
-    // Get initial settings from store (applied immediately to avoid flash)
-    const initialOptions = getTerminalOptions()
+    // Check for cached terminal (preserves scrollback across React remounts
+    // caused by react-resizable-panels restructuring the Panel tree on splits)
+    const cached = getCachedTerminal(sessionId)
 
-    // Create terminal with persisted settings
-    const terminal = new XTerm({
-      cursorBlink: true,
-      ...initialOptions,
-    })
+    let terminal: XTerm
+    let fitAddon: FitAddon
+    let xtermContainer: HTMLDivElement
+
+    if (cached) {
+      // Restore from cache — re-parent the existing DOM, no new XTerm needed
+      terminal = cached.terminal
+      fitAddon = cached.fitAddon
+      xtermContainer = cached.container
+      containerRef.current.appendChild(xtermContainer)
+      removeCachedTerminal(sessionId)
+    } else {
+      // Create new terminal
+      const initialOptions = getTerminalOptions()
+      terminal = new XTerm({
+        cursorBlink: true,
+        ...initialOptions,
+      })
+
+      fitAddon = new FitAddon()
+      terminal.loadAddon(fitAddon)
+
+      // Create our own container div for xterm (not React-managed).
+      // This allows us to detach and re-attach across React remounts.
+      xtermContainer = document.createElement('div')
+      xtermContainer.style.width = '100%'
+      xtermContainer.style.height = '100%'
+      containerRef.current.appendChild(xtermContainer)
+      terminal.open(xtermContainer)
+    }
+
     xtermRef.current = terminal
-
-    // Create and load fit addon
-    const fitAddon = new FitAddon()
     fitAddonRef.current = fitAddon
-    terminal.loadAddon(fitAddon)
-
-    // Open terminal in container
-    terminal.open(containerRef.current)
+    xtermContainerRef.current = xtermContainer
 
     // Acquire WebGL from pool for GPU-accelerated rendering (all visible terminals)
     // Pool handles capacity limits — up to maxSize terminals get WebGL, rest use DOM renderer
@@ -170,7 +194,7 @@ export function Terminal({
       webglAddonRef.current = webglAddon
     }
 
-    // Initial fit
+    // Fit to container (handles both new and cached terminals adapting to new container size)
     fitAddon.fit()
 
     // Handle resize with debounce (uses per-instance ref to avoid multi-terminal conflicts)
@@ -209,18 +233,32 @@ export function Terminal({
     // Notify parent that terminal is ready (use ref for stable callback)
     onReadyRef.current?.(terminal)
 
-    // Cleanup
+    // Cleanup: cache terminal instead of disposing (preserves scrollback for remounts)
     return () => {
       resizeObserver.disconnect()
       if (resizeTimeoutRef.current) {
         clearTimeout(resizeTimeoutRef.current)
       }
-      // Release WebGL back to pool before disposing terminal
-      // Pool owns disposal per Critical Discovery 03
+      // Release WebGL back to pool (pool owns disposal per Critical Discovery 03)
       const pool = useWebGLPoolStore.getState()
       pool.release(sessionId)
       webglAddonRef.current = null
-      terminal.dispose()
+
+      // Detach xterm container from DOM and cache for potential remount.
+      // If session was already removed (user closed it), dispose instead.
+      if (xtermContainerRef.current && containerRef.current?.contains(xtermContainerRef.current)) {
+        containerRef.current.removeChild(xtermContainerRef.current)
+      }
+      const sessionExists = useSessionStore.getState().sessions.has(sessionId)
+      if (sessionExists) {
+        cacheTerminal(sessionId, {
+          terminal,
+          fitAddon,
+          container: xtermContainerRef.current!,
+        })
+      } else {
+        terminal.dispose()
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]) // Only recreate terminal when sessionId changes. onReady is initial value only.

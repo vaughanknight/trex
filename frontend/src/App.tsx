@@ -36,14 +36,16 @@ function App() {
   const user = useAuthStore(selectUser)
   const authLoading = useAuthStore(selectAuthLoading)
 
-  // Workspace state
+  // Workspace state — subscribe to active item by reference.
+  // splitPane/closePane etc. produce new item objects (immutable update),
+  // so reference equality naturally triggers re-render when tree changes.
   const activeItemId = useWorkspaceStore(selectActiveItemId)
   const activeSessionId = useWorkspaceStore(selectActiveSessionId)
-
-  // Get active item imperatively to determine type (safe in render since we depend on activeItemId scalar)
-  const activeItem = activeItemId
-    ? useWorkspaceStore.getState().items.find(i => i.id === activeItemId)
-    : undefined
+  const activeItem = useWorkspaceStore(
+    (state) => state.activeItemId
+      ? state.items.find(i => i.id === state.activeItemId)
+      : undefined
+  )
 
   const { showConfirmDialog, pendingSessionCount, onConfirm, onCancel, onDisablePrompt } = useURLSync()
   useAuthInit()

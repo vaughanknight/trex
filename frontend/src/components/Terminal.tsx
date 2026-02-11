@@ -5,7 +5,7 @@ import '@xterm/xterm/css/xterm.css'
 import { useCentralWebSocket, type SessionHandlers } from '../hooks/useCentralWebSocket'
 import { useActivityDebounce } from '../hooks/useActivityDebounce'
 import { useTerminalTheme, getTerminalOptions } from '../hooks/useTerminalTheme'
-import { useSettingsStore, selectTheme } from '../stores/settings'
+import { useSettingsStore, selectTheme, selectUnfocusedOutputInterval } from '../stores/settings'
 import { useSessionStore } from '../stores/sessions'
 import { getThemeById } from '../themes'
 import { useWebGLPoolStore } from '../stores/webglPool'
@@ -85,11 +85,14 @@ export function Terminal({
     xtermRef.current?.write(buffered)
   }, [])
 
+  // Read unfocused output interval from settings
+  const unfocusedOutputInterval = useSettingsStore(selectUnfocusedOutputInterval)
+
   // Start/stop throttle timer based on focus state
   useEffect(() => {
     if (!isFocused) {
       // Start periodic flush for unfocused pane
-      throttleTimerRef.current = setInterval(flushOutputBuffer, 200)
+      throttleTimerRef.current = setInterval(flushOutputBuffer, unfocusedOutputInterval)
     } else {
       // Focused: flush immediately and stop timer
       if (throttleTimerRef.current) {
@@ -104,7 +107,7 @@ export function Terminal({
         throttleTimerRef.current = null
       }
     }
-  }, [isFocused, flushOutputBuffer])
+  }, [isFocused, flushOutputBuffer, unfocusedOutputInterval])
 
   // Handle terminal output - write to xterm (throttled when unfocused)
   const onOutput = useCallback((data: string) => {
@@ -153,12 +156,16 @@ export function Terminal({
     let terminal: XTerm
     let fitAddon: FitAddon
     let xtermContainer: HTMLDivElement
+    let restoredFromCache = false
+    let prevCols = 0
 
     if (cached) {
       // Restore from cache — re-parent the existing DOM, no new XTerm needed
       terminal = cached.terminal
       fitAddon = cached.fitAddon
       xtermContainer = cached.container
+      prevCols = terminal.cols
+      restoredFromCache = true
       containerRef.current.appendChild(xtermContainer)
       removeCachedTerminal(sessionId)
     } else {
@@ -196,6 +203,16 @@ export function Terminal({
 
     // Fit to container (handles both new and cached terminals adapting to new container size)
     fitAddon.fit()
+
+    // When a cached terminal is restored into a different-width pane, xterm.js
+    // reflows the buffer (wrapping/unwrapping lines). The subsequent resize to
+    // the backend triggers SIGWINCH, causing the shell to redraw its prompt —
+    // but xterm's cursor position no longer matches what the shell expects,
+    // resulting in doubled/garbled prompt text. Clearing the visible screen
+    // (preserving scrollback) gives the shell a clean slate for its redraw.
+    if (restoredFromCache && terminal.cols !== prevCols) {
+      terminal.write('\x1b[2J\x1b[H')
+    }
 
     // Handle resize with debounce (uses per-instance ref to avoid multi-terminal conflicts)
     // Each terminal observes its own container — no global window.resize broadcast needed
@@ -329,7 +346,7 @@ export function Terminal({
     } else if (connectionState === 'disconnected') {
       xtermRef.current.writeln('\r\n\x1b[33mDisconnected\x1b[0m')
     }
-  }, [connectionState])
+  }, [connectionState, sessionId])
 
   // Focus terminal and refresh rendering when active
   useEffect(() => {

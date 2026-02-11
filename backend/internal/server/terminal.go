@@ -7,12 +7,22 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/vaughanknight/trex/internal/auth"
 	"github.com/vaughanknight/trex/internal/terminal"
 )
+
+// pendingShellStart tracks a session whose shell hasn't started yet.
+// The shell is deferred until the first resize arrives from the frontend,
+// so the PTY is sized correctly before the shell outputs its first prompt.
+type pendingShellStart struct {
+	realPTY   *terminal.RealPTY
+	shellPath string
+	started   atomic.Bool
+}
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  4096,
@@ -26,22 +36,24 @@ var upgrader = websocket.Upgrader{
 
 // connectionHandler manages a single WebSocket connection with multiple sessions.
 type connectionHandler struct {
-	conn     *websocket.Conn
-	registry *terminal.SessionRegistry
-	server   *Server                      // back-reference for monitor control
-	sessions map[string]*terminal.Session // sessions active on this connection
-	mu       sync.Mutex                   // protects sessions map
-	writeMu  sync.Mutex                   // protects WebSocket writes
-	authUser *auth.GitHubUser             // authenticated user (nil when auth disabled)
+	conn          *websocket.Conn
+	registry      *terminal.SessionRegistry
+	server        *Server                            // back-reference for monitor control
+	sessions      map[string]*terminal.Session       // sessions active on this connection
+	pendingStarts map[string]*pendingShellStart       // sessions waiting for first resize to start shell
+	mu            sync.Mutex                          // protects sessions and pendingStarts maps
+	writeMu       sync.Mutex                          // protects WebSocket writes
+	authUser      *auth.GitHubUser                   // authenticated user (nil when auth disabled)
 }
 
 // newConnectionHandler creates a handler for a WebSocket connection.
 func newConnectionHandler(conn *websocket.Conn, registry *terminal.SessionRegistry, server *Server) *connectionHandler {
 	return &connectionHandler{
-		conn:     conn,
-		registry: registry,
-		server:   server,
-		sessions: make(map[string]*terminal.Session),
+		conn:          conn,
+		registry:      registry,
+		server:        server,
+		sessions:      make(map[string]*terminal.Session),
+		pendingStarts: make(map[string]*pendingShellStart),
 	}
 }
 
@@ -99,7 +111,7 @@ func (h *connectionHandler) run() {
 func (h *connectionHandler) handleMessage(msg *terminal.ClientMessage) {
 	switch msg.Type {
 	case terminal.MsgTypeCreate:
-		h.handleCreate()
+		h.handleCreate(msg)
 
 	case terminal.MsgTypeClose:
 		h.handleClose(msg)
@@ -128,9 +140,10 @@ func (h *connectionHandler) handleClose(msg *terminal.ClientMessage) {
 
 	log.Printf("Closing session %s", session.ID)
 
-	// Remove from local map
+	// Remove from local map and pending starts
 	h.mu.Lock()
 	delete(h.sessions, msg.SessionId)
+	delete(h.pendingStarts, msg.SessionId)
 	h.mu.Unlock()
 
 	// Close session gracefully
@@ -142,13 +155,22 @@ func (h *connectionHandler) handleClose(msg *terminal.ClientMessage) {
 	log.Printf("Session %s closed", msg.SessionId)
 }
 
-// handleCreate creates a new terminal session.
-func (h *connectionHandler) handleCreate() {
+// handleCreate creates a new terminal session with deferred shell start.
+//
+// The PTY pair is created immediately but the shell process is NOT started
+// until the frontend sends the first resize message with the actual terminal
+// dimensions. This prevents the doubled-prompt bug: the shell's first output
+// is always at the correct size because the PTY is resized before startup.
+//
+// A fallback timer starts the shell after 5 seconds if no resize arrives
+// (handles edge cases where the frontend fails to send a resize).
+func (h *connectionHandler) handleCreate(msg *terminal.ClientMessage) {
 	// Generate session ID
 	sessionID := h.registry.NextID()
 
-	// Create PTY
-	pty, err := terminal.NewRealPTY()
+	// Create PTY pair WITHOUT starting the shell.
+	// Read() on this PTY blocks until the shell starts and writes output.
+	realPTY, err := terminal.NewUnstartedPTY()
 	if err != nil {
 		log.Printf("PTY creation error: %v", err)
 		h.sendError("", "failed to create terminal")
@@ -162,29 +184,51 @@ func (h *connectionHandler) handleCreate() {
 	}
 	shellType := filepath.Base(shellPath)
 
-	// Create session
-	session := terminal.NewSessionWithConn(sessionID, pty, h)
+	// Create session (PTY satisfies the PTY interface via Read/Write/Resize/Close)
+	session := terminal.NewSessionWithConn(sessionID, realPTY, h)
 	session.Name = shellType + "-" + sessionID[1:] // e.g., "bash-1" from "s1"
 	session.ShellType = shellType
 	session.Status = terminal.SessionStatusActive
-	session.TtyPath = pty.TtyPath
+	session.TtyPath = realPTY.TtyPath
 	if h.authUser != nil {
 		session.Owner = h.authUser.Username
 	}
 
-	// Add to registry and local map
+	// Track pending shell start
+	ps := &pendingShellStart{
+		realPTY:   realPTY,
+		shellPath: shellPath,
+	}
+
+	// Add to registry, local map, and pending starts
 	h.registry.Add(session)
 	h.mu.Lock()
 	h.sessions[sessionID] = session
+	h.pendingStarts[sessionID] = ps
 	h.mu.Unlock()
 
-	// Start session goroutines for PTY → WebSocket
+	// Start PTY read goroutine — blocks on Read() until shell starts and writes output
 	go session.RunReadPTY()
 
-	log.Printf("Created session %s (%s)", session.ID, session.Name)
+	log.Printf("Created session %s (%s) [shell deferred until first resize]", session.ID, session.Name)
 
-	// Send session created response
+	// Send session created response (frontend can now render the terminal)
 	h.sendSessionCreated(sessionID, shellType, session.Name)
+
+	// Fallback: start shell after 5 seconds if no resize received
+	go func() {
+		time.Sleep(5 * time.Second)
+		if ps.started.CompareAndSwap(false, true) {
+			log.Printf("Session %s: fallback shell start (no resize received)", sessionID)
+			if err := realPTY.StartShell(shellPath); err != nil {
+				log.Printf("Failed to start shell for session %s: %v", sessionID, err)
+			}
+			// Clean up pending entry
+			h.mu.Lock()
+			delete(h.pendingStarts, sessionID)
+			h.mu.Unlock()
+		}
+	}()
 }
 
 // handleInput forwards input to the appropriate session.
@@ -199,6 +243,9 @@ func (h *connectionHandler) handleInput(msg *terminal.ClientMessage) {
 }
 
 // handleResize forwards resize to the appropriate session.
+// On the FIRST resize for a session with deferred shell start, this sizes
+// the PTY and starts the shell — so the shell's initial prompt is at the
+// correct dimensions.
 func (h *connectionHandler) handleResize(msg *terminal.ClientMessage) {
 	session := h.getSession(msg.SessionId)
 	if session == nil {
@@ -217,7 +264,24 @@ func (h *connectionHandler) handleResize(msg *terminal.ClientMessage) {
 		}
 	}
 
+	// Check if this session has a pending shell start
+	h.mu.Lock()
+	ps, isPending := h.pendingStarts[msg.SessionId]
+	if isPending {
+		delete(h.pendingStarts, msg.SessionId)
+	}
+	h.mu.Unlock()
+
+	// Resize the PTY (works whether shell is started or not)
 	session.Resize(msg.Cols, msg.Rows)
+
+	// If shell hasn't started, start it now at the correct size
+	if isPending && ps.started.CompareAndSwap(false, true) {
+		log.Printf("Session %s: starting shell at %dx%d", msg.SessionId, msg.Cols, msg.Rows)
+		if err := ps.realPTY.StartShell(ps.shellPath); err != nil {
+			log.Printf("Failed to start shell for session %s: %v", msg.SessionId, err)
+		}
+	}
 }
 
 // handleTmuxConfig updates the tmux polling interval from frontend settings.
@@ -264,6 +328,7 @@ func (h *connectionHandler) cleanup() {
 		sessions = append(sessions, s)
 	}
 	h.sessions = make(map[string]*terminal.Session)
+	h.pendingStarts = make(map[string]*pendingShellStart)
 	h.mu.Unlock()
 
 	for _, session := range sessions {

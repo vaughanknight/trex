@@ -314,34 +314,36 @@ export function useCentralWebSocket(): UseCentralWebSocketReturn {
     [connect]
   )
 
-  // Get WebSocket from store (shared across all components)
-  const ws = useWebSocketStore((state) => state.ws)
-
   // Send input to specific session
+  // Read ws from store imperatively to avoid stale closure when ws ref changes
   const sendInput = useCallback((sessionId: string, data: string) => {
-    if (ws?.readyState === WebSocket.OPEN) {
+    const currentWs = useWebSocketStore.getState().ws
+    if (currentWs?.readyState === WebSocket.OPEN) {
       const msg: ClientMessage = { sessionId, type: 'input', data }
-      ws.send(JSON.stringify(msg))
+      currentWs.send(JSON.stringify(msg))
     }
-  }, [ws])
+  }, [])
 
   // Send resize to specific session
+  // Read ws from store imperatively to avoid stale closure when ws ref changes
   const sendResize = useCallback((sessionId: string, cols: number, rows: number) => {
-    if (ws?.readyState === WebSocket.OPEN) {
+    const currentWs = useWebSocketStore.getState().ws
+    if (currentWs?.readyState === WebSocket.OPEN) {
       const msg: ClientMessage = { sessionId, type: 'resize', cols, rows }
-      ws.send(JSON.stringify(msg))
+      currentWs.send(JSON.stringify(msg))
     }
-  }, [ws])
+  }, [])
 
   // Close a specific session (tells backend to terminate PTY)
   const closeSession = useCallback((sessionId: string) => {
-    if (ws?.readyState === WebSocket.OPEN) {
+    const currentWs = useWebSocketStore.getState().ws
+    if (currentWs?.readyState === WebSocket.OPEN) {
       const msg: ClientMessage = { sessionId, type: 'close' }
-      ws.send(JSON.stringify(msg))
+      currentWs.send(JSON.stringify(msg))
     }
     // Also unregister handlers immediately
     unregisterSession(sessionId)
-  }, [ws, unregisterSession])
+  }, [unregisterSession])
 
   // Cleanup on unmount
   useEffect(() => {

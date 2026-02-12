@@ -149,6 +149,12 @@ export function Terminal({
   useEffect(() => {
     if (!containerRef.current) return
 
+    // Reset dimension caches — when React reuses this component for a different
+    // session (same tree position, no key), refs persist. Without this reset,
+    // the new session's resize is skipped because dims match the old session's.
+    lastDimsRef.current = null
+    lastContainerSizeRef.current = null
+
     // Check for cached terminal (preserves scrollback across React remounts
     // caused by react-resizable-panels restructuring the Panel tree on splits)
     const cached = getCachedTerminal(sessionId)

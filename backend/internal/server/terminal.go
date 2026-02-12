@@ -215,9 +215,13 @@ func (h *connectionHandler) handleCreate(msg *terminal.ClientMessage) {
 	// Send session created response (frontend can now render the terminal)
 	h.sendSessionCreated(sessionID, shellType, session.Name)
 
-	// Fallback: start shell after 5 seconds if no resize received
+	// Fallback: start shell after 500ms if no resize received.
+	// The active/visible terminal sends resize within ~50ms of mounting.
+	// Any session that hasn't received a resize by 500ms is a non-visible
+	// tab — safe to start at default 80x24 since the user isn't looking at it.
+	// When they switch to it, the terminal will resize and SIGWINCH the shell.
 	go func() {
-		time.Sleep(5 * time.Second)
+		time.Sleep(500 * time.Millisecond)
 		if ps.started.CompareAndSwap(false, true) {
 			log.Printf("Session %s: fallback shell start (no resize received)", sessionID)
 			if err := realPTY.StartShell(shellPath); err != nil {

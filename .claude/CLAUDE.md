@@ -8,7 +8,7 @@ You MUST update the terminal title to reflect your current work status. This pro
 
 ### How to Update Title
 
-Use the provided scripts:
+Use the provided scripts. **IMPORTANT: Always run title updates as fire-and-forget** — use `run_in_background: true` on the Bash tool and batch the title update in parallel with your next tool call. Title updates should NEVER block your workflow or consume a dedicated round-trip.
 
 ```bash
 # When starting work on a plan
@@ -26,6 +26,12 @@ Use the provided scripts:
 # When all work is done (idle)
 ./scripts/set_title.sh idle
 ```
+
+### Execution Rules
+
+1. **Always background**: Use `run_in_background: true` — never wait for the result
+2. **Batch when possible**: Send the title update in the same message as your next tool call (e.g., title update + file read in parallel)
+3. **Exception — completion states**: `plan-done`, `phase-done`, and `idle` may be the final action with nothing to batch against. A standalone background call is fine in this case.
 
 ### Title States
 

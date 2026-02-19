@@ -352,6 +352,17 @@ func (s *Session) SendTmuxStatus(updates map[string]string) {
 	}
 }
 
+// SendTmuxSessions sends a tmux_sessions message with the full session list.
+func (s *Session) SendTmuxSessions(sessions []TmuxSessionInfo) {
+	msg := ServerMessage{
+		Type:         MsgTypeTmuxSessions,
+		TmuxSessions: sessions,
+	}
+	if err := s.sendJSON(msg); err != nil {
+		log.Printf("Failed to send tmux_sessions for session %s: %v", s.ID, err)
+	}
+}
+
 // sendExitMessage sends an exit message to the client.
 func (s *Session) sendExitMessage(code int) {
 	msg := ServerMessage{

@@ -1,9 +1,12 @@
 package terminal
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
+
+var errTest = errors.New("test error")
 
 // Test Doc:
 // - Why: TmuxMonitor is the core polling loop that detects tmux session attachments
@@ -30,7 +33,7 @@ func TestTmuxMonitor_DetectAttach(t *testing.T) {
 	detector := NewFakeTmuxDetector()
 	detector.AddClient("/dev/ttys010", "work")
 
-	monitor := NewTmuxMonitor(detector, registry, 50*time.Millisecond, nil)
+	monitor := NewTmuxMonitor(detector, registry, 50*time.Millisecond, nil, nil)
 
 	changes := monitor.poll()
 	if len(changes) != 1 {
@@ -55,7 +58,7 @@ func TestTmuxMonitor_DetectDetach(t *testing.T) {
 	detector := NewFakeTmuxDetector()
 	// No clients — simulates detach
 
-	monitor := NewTmuxMonitor(detector, registry, 50*time.Millisecond, nil)
+	monitor := NewTmuxMonitor(detector, registry, 50*time.Millisecond, nil, nil)
 
 	changes := monitor.poll()
 	if len(changes) != 1 {
@@ -80,7 +83,7 @@ func TestTmuxMonitor_DetectSessionSwitch(t *testing.T) {
 	detector := NewFakeTmuxDetector()
 	detector.AddClient("/dev/ttys010", "debug") // Switched to different session
 
-	monitor := NewTmuxMonitor(detector, registry, 50*time.Millisecond, nil)
+	monitor := NewTmuxMonitor(detector, registry, 50*time.Millisecond, nil, nil)
 
 	changes := monitor.poll()
 	if len(changes) != 1 {
@@ -103,7 +106,7 @@ func TestTmuxMonitor_NoChange_Idempotent(t *testing.T) {
 	callCount := 0
 	monitor := NewTmuxMonitor(detector, registry, 50*time.Millisecond, func(updates map[string]string) {
 		callCount++
-	})
+	}, nil)
 
 	changes := monitor.poll()
 	if len(changes) != 0 {
@@ -115,7 +118,7 @@ func TestTmuxMonitor_StopsOnContextCancel(t *testing.T) {
 	registry := NewSessionRegistry()
 	detector := NewFakeTmuxDetector()
 
-	monitor := NewTmuxMonitor(detector, registry, 10*time.Millisecond, nil)
+	monitor := NewTmuxMonitor(detector, registry, 10*time.Millisecond, nil, nil)
 	monitor.Start()
 
 	// Should stop quickly when cancelled
@@ -132,7 +135,7 @@ func TestTmuxMonitor_SkipsWhenUnavailable(t *testing.T) {
 	callCount := 0
 	monitor := NewTmuxMonitor(detector, registry, 10*time.Millisecond, func(updates map[string]string) {
 		callCount++
-	})
+	}, nil)
 	monitor.Start()
 
 	// Give it time to potentially start
@@ -155,7 +158,7 @@ func TestTmuxMonitor_MultipleSessions(t *testing.T) {
 	detector.AddClient("/dev/ttys017", "work")
 	// s3 not in tmux
 
-	monitor := NewTmuxMonitor(detector, registry, 50*time.Millisecond, nil)
+	monitor := NewTmuxMonitor(detector, registry, 50*time.Millisecond, nil, nil)
 
 	changes := monitor.poll()
 	if len(changes) != 2 {
@@ -173,7 +176,7 @@ func TestTmuxMonitor_SessionWithoutTtyPath_Ignored(t *testing.T) {
 	detector := NewFakeTmuxDetector()
 	detector.AddClient("/dev/ttys010", "work")
 
-	monitor := NewTmuxMonitor(detector, registry, 50*time.Millisecond, nil)
+	monitor := NewTmuxMonitor(detector, registry, 50*time.Millisecond, nil, nil)
 
 	changes := monitor.poll()
 	if len(changes) != 0 {
@@ -185,11 +188,149 @@ func TestTmuxMonitor_UpdateInterval(t *testing.T) {
 	registry := NewSessionRegistry()
 	detector := NewFakeTmuxDetector()
 
-	monitor := NewTmuxMonitor(detector, registry, 100*time.Millisecond, nil)
+	monitor := NewTmuxMonitor(detector, registry, 100*time.Millisecond, nil, nil)
 	monitor.Start()
 	defer monitor.Stop()
 
 	// UpdateInterval should not panic or deadlock
 	monitor.UpdateInterval(50 * time.Millisecond)
 	time.Sleep(20 * time.Millisecond) // Let the loop pick up the new interval
+}
+
+// Test Doc:
+// - Why: TmuxMonitor session list tracking is the push mechanism for the tmux sidebar
+// - Contract: Detects initial sessions, additions, removals; no-op when unchanged;
+//   error recovery reuses cached lastSessions and does NOT call callback
+// - Usage Notes: Uses FakeTmuxDetector.AddSession/RemoveSession to control session list
+// - Quality Contribution: Catches regressions in session list polling and error recovery
+// - Worked Example: AddSession("work",3,1) → pollSessions() → callback called with [{work,3,1}]
+
+func TestTmuxMonitor_DetectSessionAdded(t *testing.T) {
+	registry := NewSessionRegistry()
+	detector := NewFakeTmuxDetector()
+	detector.AddSession("work", 3, 1)
+
+	var received []TmuxSessionInfo
+	monitor := NewTmuxMonitor(detector, registry, 50*time.Millisecond, nil, func(sessions []TmuxSessionInfo) {
+		received = sessions
+	})
+
+	monitor.pollSessions()
+	if len(received) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(received))
+	}
+	if received[0].Name != "work" {
+		t.Errorf("expected 'work', got %q", received[0].Name)
+	}
+
+	// Add another session
+	detector.AddSession("debug", 1, 0)
+	received = nil
+	monitor.pollSessions()
+	if len(received) != 2 {
+		t.Fatalf("expected 2 sessions after add, got %d", len(received))
+	}
+}
+
+func TestTmuxMonitor_DetectSessionRemoved(t *testing.T) {
+	registry := NewSessionRegistry()
+	detector := NewFakeTmuxDetector()
+	detector.AddSession("work", 3, 1)
+	detector.AddSession("debug", 1, 0)
+
+	var received []TmuxSessionInfo
+	monitor := NewTmuxMonitor(detector, registry, 50*time.Millisecond, nil, func(sessions []TmuxSessionInfo) {
+		received = sessions
+	})
+
+	// Initial poll
+	monitor.pollSessions()
+	if len(received) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(received))
+	}
+
+	// Remove one
+	detector.RemoveSession("debug")
+	received = nil
+	monitor.pollSessions()
+	if len(received) != 1 {
+		t.Fatalf("expected 1 session after remove, got %d", len(received))
+	}
+	if received[0].Name != "work" {
+		t.Errorf("expected 'work', got %q", received[0].Name)
+	}
+}
+
+func TestTmuxMonitor_SessionListError(t *testing.T) {
+	registry := NewSessionRegistry()
+	detector := NewFakeTmuxDetector()
+	detector.AddSession("work", 3, 1)
+
+	callCount := 0
+	monitor := NewTmuxMonitor(detector, registry, 50*time.Millisecond, nil, func(sessions []TmuxSessionInfo) {
+		callCount++
+	})
+
+	// Initial poll succeeds
+	monitor.pollSessions()
+	if callCount != 1 {
+		t.Fatalf("expected 1 call after initial poll, got %d", callCount)
+	}
+
+	// Now set error — callback should NOT be called
+	detector.SetError(errTest)
+	monitor.pollSessions()
+	if callCount != 1 {
+		t.Errorf("callback called on error — expected still 1, got %d", callCount)
+	}
+
+	// Verify cached sessions still available
+	cached := monitor.GetLastSessions()
+	if len(cached) != 1 {
+		t.Fatalf("expected cached 1 session, got %d", len(cached))
+	}
+	if cached[0].Name != "work" {
+		t.Errorf("expected cached 'work', got %q", cached[0].Name)
+	}
+}
+
+func TestTmuxMonitor_SessionListNoChange(t *testing.T) {
+	registry := NewSessionRegistry()
+	detector := NewFakeTmuxDetector()
+	detector.AddSession("work", 3, 1)
+
+	callCount := 0
+	monitor := NewTmuxMonitor(detector, registry, 50*time.Millisecond, nil, func(sessions []TmuxSessionInfo) {
+		callCount++
+	})
+
+	// First poll triggers callback
+	monitor.pollSessions()
+	if callCount != 1 {
+		t.Fatalf("expected 1 call, got %d", callCount)
+	}
+
+	// Second poll — same data, no callback
+	monitor.pollSessions()
+	if callCount != 1 {
+		t.Errorf("callback called on no-change — expected still 1, got %d", callCount)
+	}
+}
+
+func TestTmuxMonitor_SessionListInitial(t *testing.T) {
+	registry := NewSessionRegistry()
+	detector := NewFakeTmuxDetector()
+	detector.AddSession("work", 3, 1)
+	detector.AddSession("debug", 1, 0)
+
+	var received []TmuxSessionInfo
+	monitor := NewTmuxMonitor(detector, registry, 50*time.Millisecond, nil, func(sessions []TmuxSessionInfo) {
+		received = sessions
+	})
+
+	// First poll should discover existing sessions
+	monitor.pollSessions()
+	if len(received) != 2 {
+		t.Fatalf("expected 2 sessions on initial discovery, got %d", len(received))
+	}
 }

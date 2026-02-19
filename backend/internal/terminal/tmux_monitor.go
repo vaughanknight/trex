@@ -8,13 +8,24 @@ import (
 )
 
 // TmuxMonitor periodically polls tmux to detect which trex sessions are
-// attached to which tmux sessions. When changes are detected, it updates
-// Session.TmuxSessionName and calls the onChange callback.
+// attached to which tmux sessions and which tmux sessions exist on the system.
+//
+// Two independent polling paths run on the same ticker:
+// - poll(): client attachment tracking (Plan 014) — calls onChange
+// - pollSessions(): session list discovery (Plan 018) — calls onSessionsChanged
 type TmuxMonitor struct {
 	detector TmuxDetector
 	registry *SessionRegistry
 	interval time.Duration
-	onChange func(updates map[string]string) // sessionID → tmuxSessionName (empty = detached)
+	onChange          func(updates map[string]string)  // sessionID → tmuxSessionName (empty = detached)
+	onSessionsChanged func(sessions []TmuxSessionInfo) // full session list on change
+
+	// lastSessions caches the most recent successful ListSessions() result.
+	// Used for error recovery (reuse on failure) and for GetLastSessions().
+	// Protected by sessionsMu — written by pollSessions() on monitor goroutine,
+	// read by GetLastSessions() from WebSocket handler goroutines.
+	sessionsMu   sync.RWMutex
+	lastSessions []TmuxSessionInfo
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -25,16 +36,19 @@ type TmuxMonitor struct {
 }
 
 // NewTmuxMonitor creates a monitor. Call Start() to begin polling.
-func NewTmuxMonitor(detector TmuxDetector, registry *SessionRegistry, interval time.Duration, onChange func(map[string]string)) *TmuxMonitor {
+// onChange is called when client attachment state changes (Plan 014).
+// onSessionsChanged is called when the tmux session list changes (Plan 018).
+func NewTmuxMonitor(detector TmuxDetector, registry *SessionRegistry, interval time.Duration, onChange func(map[string]string), onSessionsChanged func([]TmuxSessionInfo)) *TmuxMonitor {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &TmuxMonitor{
-		detector:   detector,
-		registry:   registry,
-		interval:   interval,
-		onChange:    onChange,
-		ctx:        ctx,
-		cancel:     cancel,
-		intervalCh: make(chan time.Duration, 1),
+		detector:          detector,
+		registry:          registry,
+		interval:          interval,
+		onChange:           onChange,
+		onSessionsChanged: onSessionsChanged,
+		ctx:               ctx,
+		cancel:            cancel,
+		intervalCh:        make(chan time.Duration, 1),
 	}
 }
 
@@ -73,10 +87,6 @@ func (m *TmuxMonitor) run() {
 	ticker := time.NewTicker(m.interval)
 	defer ticker.Stop()
 
-	consecutiveFailures := 0
-	const maxConsecutiveFailures = 3
-	backoffInterval := 30 * time.Second
-
 	for {
 		select {
 		case <-m.ctx.Done():
@@ -93,10 +103,7 @@ func (m *TmuxMonitor) run() {
 				m.onChange(changes)
 			}
 
-			// Handle consecutive failure backoff
-			if consecutiveFailures >= maxConsecutiveFailures {
-				ticker.Reset(backoffInterval)
-			}
+			m.pollSessions()
 		}
 	}
 }
@@ -143,4 +150,56 @@ func (m *TmuxMonitor) poll() map[string]string {
 	}
 
 	return changes
+}
+
+// pollSessions calls ListSessions and fires onSessionsChanged if the list differs
+// from lastSessions. On error, the cached lastSessions is preserved (no callback).
+func (m *TmuxMonitor) pollSessions() {
+	sessions, err := m.detector.ListSessions()
+	if err != nil {
+		log.Printf("tmux list-sessions error: %v", err)
+		return // Keep lastSessions cached — no callback
+	}
+
+	m.sessionsMu.RLock()
+	unchanged := sessionsEqual(m.lastSessions, sessions)
+	m.sessionsMu.RUnlock()
+	if unchanged {
+		return
+	}
+
+	m.sessionsMu.Lock()
+	m.lastSessions = sessions
+	m.sessionsMu.Unlock()
+
+	if m.onSessionsChanged != nil {
+		// Pass a copy to prevent callback from mutating cached state
+		m.onSessionsChanged(append([]TmuxSessionInfo(nil), sessions...))
+	}
+}
+
+// GetLastSessions returns a copy of the most recently observed tmux session list.
+// Used by the request handler to respond to list_tmux_sessions without re-polling.
+func (m *TmuxMonitor) GetLastSessions() []TmuxSessionInfo {
+	m.sessionsMu.RLock()
+	defer m.sessionsMu.RUnlock()
+	if len(m.lastSessions) == 0 {
+		return nil
+	}
+	result := make([]TmuxSessionInfo, len(m.lastSessions))
+	copy(result, m.lastSessions)
+	return result
+}
+
+// sessionsEqual compares two TmuxSessionInfo slices for equality.
+func sessionsEqual(a, b []TmuxSessionInfo) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

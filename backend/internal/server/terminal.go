@@ -125,6 +125,9 @@ func (h *connectionHandler) handleMessage(msg *terminal.ClientMessage) {
 	case terminal.MsgTypeTmuxConfig:
 		h.handleTmuxConfig(msg)
 
+	case terminal.MsgTypeListTmuxSessions:
+		h.handleListTmuxSessions()
+
 	default:
 		log.Printf("Unknown message type: %s", msg.Type)
 	}
@@ -304,6 +307,22 @@ func (h *connectionHandler) handleTmuxConfig(msg *terminal.ClientMessage) {
 	if h.server != nil && h.server.monitor != nil {
 		h.server.monitor.UpdateInterval(d)
 	}
+}
+
+// handleListTmuxSessions responds with the current tmux session list from the monitor cache.
+func (h *connectionHandler) handleListTmuxSessions() {
+	if h.server == nil || h.server.monitor == nil {
+		h.sendJSON(terminal.ServerMessage{
+			Type:         terminal.MsgTypeTmuxSessions,
+			TmuxSessions: nil,
+		})
+		return
+	}
+	sessions := h.server.monitor.GetLastSessions()
+	h.sendJSON(terminal.ServerMessage{
+		Type:         terminal.MsgTypeTmuxSessions,
+		TmuxSessions: sessions,
+	})
 }
 
 // getSession retrieves a session by ID, checking both local map and registry.

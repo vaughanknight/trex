@@ -49,7 +49,7 @@ func New(version string, cfg *config.Config) *Server {
 	if pollInterval <= 0 {
 		pollInterval = 2 * time.Second
 	}
-	s.monitor = terminal.NewTmuxMonitor(detector, s.registry, pollInterval, s.handleTmuxChanges)
+	s.monitor = terminal.NewTmuxMonitor(detector, s.registry, pollInterval, s.handleTmuxChanges, s.handleSessionsChanged)
 	s.monitor.Start()
 
 	return s
@@ -98,6 +98,27 @@ func (s *Server) handleTmuxChanges(updates map[string]string) {
 			}
 		}
 	}
+}
+
+// handleSessionsChanged is called by the tmux monitor when the tmux session list changes.
+// It broadcasts the full session list to ALL connected clients (unlike handleTmuxChanges
+// which groups by connection — session list is global, not per-session).
+func (s *Server) handleSessionsChanged(sessions []terminal.TmuxSessionInfo) {
+	// Deduplicate connections: a client may own multiple sessions but should
+	// receive only one tmux_sessions message.
+	type connKey = terminal.Conn
+	seen := make(map[connKey]bool)
+
+	for _, session := range s.registry.List() {
+		conn := session.GetConn()
+		if conn == nil || seen[conn] {
+			continue
+		}
+		seen[conn] = true
+		session.SendTmuxSessions(sessions)
+	}
+
+	log.Printf("broadcast tmux sessions (%d sessions) to %d clients", len(sessions), len(seen))
 }
 
 // ServeHTTP implements http.Handler

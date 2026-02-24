@@ -82,6 +82,15 @@ const createTestSessionStore = () =>
         return { sessions: newMap }
       }),
 
+    updateCwd: (id: string, cwd: string) =>
+      set((state) => {
+        const session = state.sessions.get(id)
+        if (!session) return state
+        const newMap = new Map(state.sessions)
+        newMap.set(id, { ...session, cwd })
+        return { sessions: newMap }
+      }),
+
     clearSessions: () => set({ sessions: new Map() }),
   }))
 

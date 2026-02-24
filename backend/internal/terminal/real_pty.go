@@ -4,10 +4,25 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 
 	"github.com/creack/pty"
 )
+
+// FilterTmuxEnv strips all environment variables whose key starts with "TMUX".
+// Used for tmux-attach sessions to prevent "sessions should be nested with care" errors.
+// Only the key part (before '=') is checked — values containing "TMUX" are preserved.
+func FilterTmuxEnv(env []string) []string {
+	var result []string
+	for _, e := range env {
+		key, _, _ := strings.Cut(e, "=")
+		if !strings.HasPrefix(key, "TMUX") {
+			result = append(result, e)
+		}
+	}
+	return result
+}
 
 // RealPTY wraps creack/pty for actual terminal functionality.
 type RealPTY struct {
@@ -128,12 +143,55 @@ func NewUnstartedPTY() (*RealPTY, error) {
 // Must be called at most once. After calling, tty is closed in the parent
 // (the child process inherits it).
 func (r *RealPTY) StartShell(shell string) error {
+	return r.StartShellInDir(shell, "")
+}
+
+// StartShellInDir starts a login shell in the specified working directory.
+// If dir is empty, starts in the default directory (user's home).
+func (r *RealPTY) StartShellInDir(shell string, dir string) error {
 	if r.tty == nil {
 		return fmt.Errorf("PTY already started or closed")
 	}
 
 	cmd := exec.Command(shell)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	if dir != "" {
+		// Validate directory exists before using it
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			cmd.Dir = dir
+		}
+		// If dir doesn't exist, fall back to default (no cmd.Dir set)
+	}
+
+	cmd.Stdin = r.tty
+	cmd.Stdout = r.tty
+	cmd.Stderr = r.tty
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setsid:  true,
+		Setctty: true,
+	}
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	// Close parent's copy of tty — child inherits it
+	_ = r.tty.Close()
+	r.tty = nil
+	r.cmd = cmd
+	return nil
+}
+
+// StartCommand launches a command with args and custom env in this PTY.
+// Like StartShell, the PTY should be Resize()d to the correct dimensions first.
+// Must be called at most once (mutually exclusive with StartShell).
+func (r *RealPTY) StartCommand(name string, args []string, env []string) error {
+	if r.tty == nil {
+		return fmt.Errorf("PTY already started or closed")
+	}
+
+	cmd := exec.Command(name, args...)
+	cmd.Env = env
 
 	cmd.Stdin = r.tty
 	cmd.Stdout = r.tty
@@ -196,3 +254,11 @@ func (r *RealPTY) Close() error {
 
 // Verify RealPTY implements PTY interface
 var _ PTY = (*RealPTY)(nil)
+
+// GetPid returns the PID of the running process, or 0 if not started.
+func (r *RealPTY) GetPid() int {
+	if r.cmd != nil && r.cmd.Process != nil {
+		return r.cmd.Process.Pid
+	}
+	return 0
+}

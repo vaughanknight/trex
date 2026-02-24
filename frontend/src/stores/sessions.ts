@@ -26,6 +26,8 @@ export interface Session {
   originalName?: string
   /** tmux session name this terminal is attached to (undefined = not in tmux) */
   tmuxSessionName?: string
+  /** Current working directory of the session process */
+  cwd?: string
 }
 
 export interface SessionsState {
@@ -41,6 +43,8 @@ export interface SessionsActions {
   updateTitleFromTerminal: (id: string, title: string) => void
   /** Update tmux session name mapping. Empty/null clears (detach). */
   updateTmuxSessionName: (id: string, name: string | null) => void
+  /** Update session working directory */
+  updateCwd: (id: string, cwd: string) => void
   clearSessions: () => void
 }
 
@@ -131,6 +135,15 @@ export const useSessionStore = create<SessionsStore>((set) => ({
         newMap.set(id, updated)
       }
 
+      return { sessions: newMap }
+    }),
+
+  updateCwd: (id, cwd) =>
+    set((state) => {
+      const session = state.sessions.get(id)
+      if (!session) return state
+      const newMap = new Map(state.sessions)
+      newMap.set(id, { ...session, cwd })
       return { sessions: newMap }
     }),
 

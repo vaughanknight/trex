@@ -17,11 +17,15 @@
  */
 import { useEffect } from 'react'
 import { useShallow } from 'zustand/shallow'
+import { RefreshCw } from 'lucide-react'
 import { monitorForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
 import { extractClosestEdge } from '@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge'
 import { useSessionStore } from '@/stores/sessions'
 import { useWorkspaceStore } from '@/stores/workspace'
-import { getAllLeaves } from '@/lib/layoutTree'
+import { useTmuxStore } from '@/stores/tmux'
+import { useSettingsStore, selectTmuxSidebarEnabled } from '@/stores/settings'
+import { useCentralWebSocket } from '@/hooks/useCentralWebSocket'
+import { getTerminalLeaves } from '@/lib/layoutTree'
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -30,6 +34,7 @@ import {
 } from '@/components/ui/sidebar'
 import { SessionItem } from './SessionItem'
 import { LayoutSidebarItem } from './LayoutSidebarItem'
+import { TmuxSessionItem } from './TmuxSessionItem'
 
 export function SessionList() {
   // useShallow prevents infinite re-render when converting Map to array
@@ -41,18 +46,23 @@ export function SessionList() {
   const items = useWorkspaceStore(useShallow((state) => state.items))
   const reorderItem = useWorkspaceStore((state) => state.reorderItem)
 
-  // Build session lookup for names
-  const sessionMap = new Map(sessions.map(s => [s.id, s]))
+  // tmux sessions — useShallow since sessions is an array
+  const tmuxSessions = useTmuxStore(useShallow((state) => state.sessions))
+  const tmuxSidebarEnabled = useSettingsStore(selectTmuxSidebarEnabled)
+  const { connect, requestTmuxSessions } = useCentralWebSocket()
+
+  // Connect WebSocket eagerly so tmux session list is available immediately
+  useEffect(() => {
+    if (tmuxSidebarEnabled) {
+      connect()
+    }
+  }, [tmuxSidebarEnabled, connect])
 
   // Collect all session IDs in workspace items
   const sessionsInWorkspace = new Set<string>()
   for (const item of items) {
-    if (item.type === 'session') {
-      sessionsInWorkspace.add(item.sessionId)
-    } else if (item.type === 'layout') {
-      for (const leaf of getAllLeaves(item.tree)) {
-        sessionsInWorkspace.add(leaf.sessionId)
-      }
+    for (const leaf of getTerminalLeaves(item.tree)) {
+      sessionsInWorkspace.add(leaf.sessionId)
     }
   }
 
@@ -92,45 +102,93 @@ export function SessionList() {
 
   if (sessions.length === 0 && items.length === 0) {
     return (
-      <SidebarGroup>
-        <SidebarGroupLabel>Sessions</SidebarGroupLabel>
-        <SidebarGroupContent>
-          <div className="px-2 py-4 text-center text-sm text-muted-foreground">
-            No sessions yet.
-            <br />
-            Click "New Session" to start.
-          </div>
-        </SidebarGroupContent>
-      </SidebarGroup>
+      <>
+        <SidebarGroup>
+          <SidebarGroupLabel>Sessions</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+              No sessions yet.
+              <br />
+              Click "New Session" to start.
+            </div>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* tmux Sessions — visible even with no regular sessions */}
+        {tmuxSidebarEnabled && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="flex items-center justify-between">
+              <span>tmux Sessions</span>
+              <button
+                onClick={requestTmuxSessions}
+                className="p-0.5 rounded hover:bg-accent"
+                title="Refresh tmux sessions"
+              >
+                <RefreshCw className="h-3 w-3" />
+              </button>
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {tmuxSessions.length > 0 ? (
+                  tmuxSessions.map((tmuxSession) => (
+                    <TmuxSessionItem key={tmuxSession.name} session={tmuxSession} />
+                  ))
+                ) : (
+                  <p className="px-2 py-1 text-xs text-muted-foreground">No tmux sessions</p>
+                )}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+      </>
     )
   }
 
   return (
-    <SidebarGroup>
-      <SidebarGroupLabel>Sessions ({items.length + orphanSessions.length})</SidebarGroupLabel>
-      <SidebarGroupContent>
-        <SidebarMenu>
-          {/* Workspace items in sidebar order */}
-          {items.map((item, index) => {
-            if (item.type === 'session') {
-              const session = sessionMap.get(item.sessionId)
-              if (!session) return null
-              return <SessionItem key={item.id} session={session} itemId={item.id} index={index} />
-            }
+    <>
+      <SidebarGroup>
+        <SidebarGroupLabel>Sessions ({items.length + orphanSessions.length})</SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {/* Workspace items in sidebar order */}
+            {items.map((item, index) => (
+              <LayoutSidebarItem key={item.id} item={item} index={index} />
+            ))}
 
-            if (item.type === 'layout') {
-              return <LayoutSidebarItem key={item.id} item={item} index={index} />
-            }
+            {/* Orphan sessions — get workspace item created on click */}
+            {orphanSessions.map((session) => (
+              <SessionItem key={session.id} session={session} />
+            ))}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
 
-            return null
-          })}
-
-          {/* Orphan sessions — get workspace item created on click */}
-          {orphanSessions.map((session) => (
-            <SessionItem key={session.id} session={session} />
-          ))}
-        </SidebarMenu>
-      </SidebarGroupContent>
-    </SidebarGroup>
+      {/* tmux Sessions section — always shown when tmux sidebar is enabled */}
+      {tmuxSidebarEnabled && (
+        <SidebarGroup>
+          <SidebarGroupLabel className="flex items-center justify-between">
+            <span>tmux Sessions</span>
+            <button
+              onClick={requestTmuxSessions}
+              className="p-0.5 rounded hover:bg-accent"
+              title="Refresh tmux sessions"
+            >
+              <RefreshCw className="h-3 w-3" />
+            </button>
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {tmuxSessions.length > 0 ? (
+                tmuxSessions.map((tmuxSession) => (
+                  <TmuxSessionItem key={tmuxSession.name} session={tmuxSession} />
+                ))
+              ) : (
+                <p className="px-2 py-1 text-xs text-muted-foreground">No tmux sessions</p>
+              )}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      )}
+    </>
   )
 }

@@ -38,6 +38,7 @@ type Session struct {
 	// tmux tracking fields
 	TtyPath          string // TTY device path (e.g., "/dev/ttys010") for tmux client matching
 	TmuxSessionName  string // tmux session this terminal is attached to (empty = not in tmux)
+	Cwd              string // Last known working directory
 
 	pty  PTY
 	conn Conn
@@ -339,6 +340,14 @@ func (s *Session) sendError(errMsg string) {
 // Used by the tmux monitor to group updates by connection.
 func (s *Session) GetConn() Conn {
 	return s.conn
+}
+
+// GetPid returns the PID of the running process, or 0 if unavailable.
+func (s *Session) GetPid() int {
+	if rpty, ok := s.pty.(*RealPTY); ok {
+		return rpty.GetPid()
+	}
+	return 0
 }
 
 // SendTmuxStatus sends a tmux_status message with the given updates map.

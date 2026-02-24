@@ -1,18 +1,18 @@
 /**
  * Workspace Store Tests
  *
- * TDD tests for the workspace store that replaces the layout store.
+ * TDD tests for the workspace store with unified WorkspaceItem model.
  * Covers: item CRUD, active item switching, layout operations,
- * convertToLayout, auto-dissolve, reorder, and derived queries.
+ * splitPane on 1-pane items, no-auto-dissolve, reorder, and derived queries.
  *
  * Test Doc:
  * - Why: Workspace store is the central state for multi-layout workspace management
- * - Contract: Store manages ordered workspace items (sessions + layouts); each layout owns its own tree + focus
+ * - Contract: Store manages ordered workspace items; each item owns its own tree + focus
  * - Usage Notes: Store is transient (not persisted). Use createWorkspaceStore() factory for testing
  * - Quality Contribution: Prevents data model regressions, infinite loops, orphaned items
  * - Worked Example: createWorkspaceStore() → {items: [], activeItemId: null}
  *
- * @see /docs/plans/016-sidebar-url-overhaul/sidebar-url-overhaul-plan.md § Phase 1
+ * @see /docs/plans/022-unified-layout-architecture/unified-layout-architecture-plan.md
  */
 
 import { describe, it, expect } from 'vitest'
@@ -22,7 +22,7 @@ import type { PaneLeaf, PaneSplit } from '../../types/layout'
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function leaf(paneId: string, sessionId: string): PaneLeaf {
-  return { type: 'leaf', paneId, sessionId }
+  return { type: 'terminal', paneId, sessionId }
 }
 
 function twoPane(): PaneSplit {
@@ -63,17 +63,19 @@ describe('Workspace Store', () => {
   // ── addSessionItem ─────────────────────────────────────────────────
 
   describe('addSessionItem', () => {
-    it('adds a standalone session item to the workspace', () => {
+    it('adds a 1-pane item with a terminal leaf tree', () => {
       const store = createWorkspaceStore()
       const itemId = store.getState().addSessionItem('session-1')
 
       expect(store.getState().items).toHaveLength(1)
       const item = store.getState().items[0]
-      expect(item.type).toBe('session')
       expect(item.id).toBe(itemId)
-      if (item.type === 'session') {
-        expect(item.sessionId).toBe('session-1')
+      expect(item.tree.type).toBe('terminal')
+      if (item.tree.type === 'terminal') {
+        expect(item.tree.sessionId).toBe('session-1')
       }
+      expect(item.focusedPaneId).toBeTruthy()
+      expect(item.userRenamed).toBe(false)
     })
 
     it('preserves item order when adding multiple items', () => {
@@ -84,27 +86,27 @@ describe('Workspace Store', () => {
 
       const items = store.getState().items
       expect(items).toHaveLength(3)
-      expect(items.map(i => i.type === 'session' ? i.sessionId : '')).toEqual(['s1', 's2', 's3'])
+      // All items have trees; extract sessionId from terminal leaf
+      const sessionIds = items.map(i => i.tree.type === 'terminal' ? i.tree.sessionId : '')
+      expect(sessionIds).toEqual(['s1', 's2', 's3'])
     })
   })
 
-  // ── addLayoutItem ──────────────────────────────────────────────────
+  // ── addItem ────────────────────────────────────────────────────────
 
-  describe('addLayoutItem', () => {
-    it('adds a layout item to the workspace', () => {
+  describe('addItem', () => {
+    it('adds an item with a multi-pane tree', () => {
       const store = createWorkspaceStore()
       const tree = twoPane()
-      const itemId = store.getState().addLayoutItem('my-layout', tree, 'p1')
+      const itemId = store.getState().addItem('my-layout', tree, 'p1')
 
       expect(store.getState().items).toHaveLength(1)
       const item = store.getState().items[0]
-      expect(item.type).toBe('layout')
       expect(item.id).toBe(itemId)
-      if (item.type === 'layout') {
-        expect(item.name).toBe('my-layout')
-        expect(item.tree).toEqual(tree)
-        expect(item.focusedPaneId).toBe('p1')
-      }
+      expect(item.name).toBe('my-layout')
+      expect(item.tree).toEqual(tree)
+      expect(item.focusedPaneId).toBe('p1')
+      expect(item.userRenamed).toBe(false)
     })
   })
 
@@ -119,8 +121,10 @@ describe('Workspace Store', () => {
       store.getState().removeItem(id1)
       expect(store.getState().items).toHaveLength(1)
       const remaining = store.getState().items[0]
-      expect(remaining.type).toBe('session')
-      if (remaining.type === 'session') expect(remaining.sessionId).toBe('s2')
+      expect(remaining.tree.type).toBe('terminal')
+      if (remaining.tree.type === 'terminal') {
+        expect(remaining.tree.sessionId).toBe('s2')
+      }
     })
 
     it('auto-selects next item when active item is removed', () => {
@@ -188,18 +192,15 @@ describe('Workspace Store', () => {
 
   // ── Layout operations ──────────────────────────────────────────────
 
-  describe('layout operations (scoped to layout item)', () => {
-    it('splitPane adds a new pane to a layout', () => {
+  describe('layout operations', () => {
+    it('splitPane adds a new pane to a 1-pane item', () => {
       const store = createWorkspaceStore()
-      const itemId = store.getState().addLayoutItem('test', leaf('p1', 's1'), 'p1')
+      const itemId = store.getState().addItem('test', leaf('p1', 's1'), 'p1')
 
       store.getState().splitPane(itemId, 'p1', 'h', 's2')
 
       const item = store.getState().items[0]
-      expect(item.type).toBe('layout')
-      if (item.type === 'layout') {
-        expect(item.tree.type).toBe('split')
-      }
+      expect(item.tree.type).toBe('split')
     })
 
     it('splitPane respects 8-pane cap', () => {
@@ -213,173 +214,152 @@ describe('Workspace Store', () => {
         first: { type: 'split', direction: 'v', ratio: 0.5, first: pair('p1', 'p2', 's1', 's2'), second: pair('p3', 'p4', 's3', 's4') },
         second: { type: 'split', direction: 'v', ratio: 0.5, first: pair('p5', 'p6', 's5', 's6'), second: pair('p7', 'p8', 's7', 's8') },
       }
-      const itemId = store.getState().addLayoutItem('test', eightPanes, 'p1')
+      const itemId = store.getState().addItem('test', eightPanes, 'p1')
       store.getState().splitPane(itemId, 'p1', 'h', 's9')
 
       // Should still be 8 panes (rejected)
       const item = store.getState().items[0]
-      if (item.type === 'layout') {
-        expect(item.tree).toEqual(eightPanes)
-      }
+      expect(item.tree).toEqual(eightPanes)
     })
 
-    it('closePane removes a pane from a layout', () => {
+    it('closePane removes a pane from a multi-pane item', () => {
       const store = createWorkspaceStore()
-      const itemId = store.getState().addLayoutItem('test', twoPane(), 'p1')
+      const itemId = store.getState().addItem('test', twoPane(), 'p1')
 
       store.getState().closePane(itemId, 'p2')
 
       const item = store.getState().items[0]
-      if (item.type === 'layout') {
-        expect(item.tree.type).toBe('leaf')
-      }
+      expect(item.tree.type).toBe('terminal')
     })
 
     it('closePane auto-focuses sibling when focused pane is closed', () => {
       const store = createWorkspaceStore()
-      const itemId = store.getState().addLayoutItem('test', twoPane(), 'p2')
+      const itemId = store.getState().addItem('test', twoPane(), 'p2')
 
       store.getState().closePane(itemId, 'p2')
 
       const item = store.getState().items[0]
-      if (item.type === 'layout') {
-        expect(item.focusedPaneId).toBe('p1')
-      }
+      expect(item.focusedPaneId).toBe('p1')
     })
 
-    it('movePane rearranges panes within a layout', () => {
+    it('movePane rearranges panes within an item', () => {
       const store = createWorkspaceStore()
-      const itemId = store.getState().addLayoutItem('test', threePane(), 'p1')
+      const itemId = store.getState().addItem('test', threePane(), 'p1')
 
       store.getState().movePane(itemId, 'p3', 'p1', 'v')
 
       const item = store.getState().items[0]
-      expect(item.type).toBe('layout')
+      expect(item.tree.type).toBe('split')
     })
 
-    it('setFocusedPane updates the focused pane within a layout', () => {
+    it('setFocusedPane updates the focused pane', () => {
       const store = createWorkspaceStore()
-      const itemId = store.getState().addLayoutItem('test', twoPane(), 'p1')
+      const itemId = store.getState().addItem('test', twoPane(), 'p1')
 
       store.getState().setFocusedPane(itemId, 'p2')
 
       const item = store.getState().items[0]
-      if (item.type === 'layout') {
-        expect(item.focusedPaneId).toBe('p2')
-      }
+      expect(item.focusedPaneId).toBe('p2')
     })
 
-    it('setRatio updates split ratio within a layout', () => {
+    it('setRatio updates split ratio', () => {
       const store = createWorkspaceStore()
-      const itemId = store.getState().addLayoutItem('test', twoPane(), 'p1')
+      const itemId = store.getState().addItem('test', twoPane(), 'p1')
 
       store.getState().setRatio(itemId, [], 0.7)
 
       const item = store.getState().items[0]
-      if (item.type === 'layout') {
-        expect(item.tree.type).toBe('split')
-        if (item.tree.type === 'split') {
-          expect(item.tree.ratio).toBe(0.7)
-        }
+      expect(item.tree.type).toBe('split')
+      if (item.tree.type === 'split') {
+        expect(item.tree.ratio).toBe(0.7)
       }
     })
 
-    it('detachPane removes pane from layout and returns sessionId', () => {
+    it('detachPane removes pane and returns sessionId', () => {
       const store = createWorkspaceStore()
-      const itemId = store.getState().addLayoutItem('test', twoPane(), 'p1')
+      const itemId = store.getState().addItem('test', twoPane(), 'p1')
 
       const sessionId = store.getState().detachPane(itemId, 'p2')
       expect(sessionId).toBe('s2')
 
       const item = store.getState().items[0]
-      if (item.type === 'layout') {
-        expect(item.tree.type).toBe('leaf')
-      }
+      expect(item.tree.type).toBe('terminal')
     })
 
     it('replaceSessionInPane swaps the session in a pane', () => {
       const store = createWorkspaceStore()
-      const itemId = store.getState().addLayoutItem('test', twoPane(), 'p1')
+      const itemId = store.getState().addItem('test', twoPane(), 'p1')
 
       store.getState().replaceSessionInPane(itemId, 'p2', 'new-session')
 
-      const item = store.getState().items[0]
-      if (item.type === 'layout') {
-        const sessions = store.getState().getSessionsInLayout(itemId)
-        expect(sessions).toContain('new-session')
-        expect(sessions).toContain('s1')
-        expect(sessions).not.toContain('s2')
-      }
+      const sessions = store.getState().getSessionsInLayout(itemId)
+      expect(sessions).toContain('new-session')
+      expect(sessions).toContain('s1')
+      expect(sessions).not.toContain('s2')
     })
   })
 
-  // ── convertToLayout ────────────────────────────────────────────────
+  // ── splitPane on 1-pane items ──────────────────────────────────────
 
-  describe('convertToLayout', () => {
-    it('converts a standalone session to a layout with 2 panes', () => {
+  describe('splitPane on 1-pane items', () => {
+    it('splits a 1-pane item created via addSessionItem into 2 panes', () => {
       const store = createWorkspaceStore()
       const itemId = store.getState().addSessionItem('s1')
       store.getState().setActiveItem(itemId)
 
-      store.getState().convertToLayout(itemId, 'h', 'new-session')
-
+      // Get the paneId from the 1-pane item's tree
       const item = store.getState().items[0]
-      expect(item.type).toBe('layout')
-      if (item.type === 'layout') {
-        expect(item.tree.type).toBe('split')
-        expect(item.id).toBe(itemId) // same item ID preserved
-      }
+      expect(item.tree.type).toBe('terminal')
+      const paneId = item.tree.type === 'terminal' ? item.tree.paneId : ''
+
+      store.getState().splitPane(itemId, paneId, 'h', 'new-session')
+
+      const updated = store.getState().items[0]
+      expect(updated.tree.type).toBe('split')
+      expect(updated.id).toBe(itemId) // same item ID preserved
     })
 
-    it('preserves sidebar position when converting', () => {
+    it('preserves sidebar position when splitting', () => {
       const store = createWorkspaceStore()
       store.getState().addSessionItem('s0')
       const itemId = store.getState().addSessionItem('s1')
       store.getState().addSessionItem('s2')
 
-      store.getState().convertToLayout(itemId, 'v', 'new-session')
+      const item = store.getState().items[1]
+      const paneId = item.tree.type === 'terminal' ? item.tree.paneId : ''
+
+      store.getState().splitPane(itemId, paneId, 'v', 'new-session')
 
       expect(store.getState().items[1].id).toBe(itemId)
-      expect(store.getState().items[1].type).toBe('layout')
-    })
-
-    it('no-op when item is already a layout', () => {
-      const store = createWorkspaceStore()
-      const itemId = store.getState().addLayoutItem('test', twoPane(), 'p1')
-
-      store.getState().convertToLayout(itemId, 'h', 'new-session')
-
-      // Should still be the same layout (not double-converted)
-      const item = store.getState().items[0]
-      if (item.type === 'layout') {
-        expect(item.tree).toEqual(twoPane())
-      }
+      expect(store.getState().items[1].tree.type).toBe('split')
     })
   })
 
-  // ── Auto-dissolve ──────────────────────────────────────────────────
+  // ── No auto-dissolve (closing to 1 pane keeps item) ───────────────
 
-  describe('auto-dissolve', () => {
-    it('layout with 1 pane remaining auto-dissolves to standalone session', () => {
+  describe('closing panes keeps item as-is', () => {
+    it('item with 1 pane remaining stays as a 1-pane item', () => {
       const store = createWorkspaceStore()
-      const itemId = store.getState().addLayoutItem('test', twoPane(), 'p1')
+      const itemId = store.getState().addItem('test', twoPane(), 'p1')
       store.getState().setActiveItem(itemId)
 
       store.getState().closePane(itemId, 'p2')
 
-      // After closing p2, only p1 remains — should auto-dissolve
+      // After closing p2, only p1 remains — item stays with tree as single leaf
       const item = store.getState().items[0]
-      expect(item.type).toBe('session')
-      if (item.type === 'session') {
-        expect(item.sessionId).toBe('s1')
+      expect(item.tree.type).toBe('terminal')
+      if (item.tree.type === 'terminal') {
+        expect(item.tree.sessionId).toBe('s1')
+        expect(item.tree.paneId).toBe('p1')
       }
+      expect(item.focusedPaneId).toBe('p1')
       // Item ID should be preserved
       expect(item.id).toBe(itemId)
     })
 
-    it('auto-dissolve preserves activeItemId', () => {
+    it('closing to 1 pane preserves activeItemId', () => {
       const store = createWorkspaceStore()
-      const itemId = store.getState().addLayoutItem('test', twoPane(), 'p1')
+      const itemId = store.getState().addItem('test', twoPane(), 'p1')
       store.getState().setActiveItem(itemId)
 
       store.getState().closePane(itemId, 'p2')
@@ -387,48 +367,51 @@ describe('Workspace Store', () => {
       expect(store.getState().activeItemId).toBe(itemId)
     })
 
-    it('detachPane triggers auto-dissolve when 1 pane remains', () => {
+    it('detachPane to 1 pane keeps item as a 1-pane item', () => {
       const store = createWorkspaceStore()
-      const itemId = store.getState().addLayoutItem('test', twoPane(), 'p1')
+      const itemId = store.getState().addItem('test', twoPane(), 'p1')
 
       store.getState().detachPane(itemId, 'p2')
 
       const item = store.getState().items[0]
-      expect(item.type).toBe('session')
-      if (item.type === 'session') {
-        expect(item.sessionId).toBe('s1')
+      expect(item.tree.type).toBe('terminal')
+      if (item.tree.type === 'terminal') {
+        expect(item.tree.sessionId).toBe('s1')
       }
     })
   })
 
-  // ── dissolveLayout ─────────────────────────────────────────────────
+  // ── dissolveAll ────────────────────────────────────────────────────
 
-  describe('dissolveLayout', () => {
-    it('converts all layout panes to standalone sessions at layout position', () => {
+  describe('dissolveAll', () => {
+    it('creates N 1-pane items at the original position', () => {
       const store = createWorkspaceStore()
       store.getState().addSessionItem('s0')
-      const layoutId = store.getState().addLayoutItem('test', threePane(), 'p1')
+      const layoutId = store.getState().addItem('test', threePane(), 'p1')
       store.getState().addSessionItem('s99')
 
-      store.getState().dissolveLayout(layoutId)
+      store.getState().dissolveAll(layoutId)
 
       const items = store.getState().items
-      // s0, then 3 dissolved sessions (s1, s2, s3), then s99
+      // s0, then 3 dissolved 1-pane items (s1, s2, s3), then s99
       expect(items).toHaveLength(5)
-      expect(items[0].type).toBe('session')
-      expect(items[1].type).toBe('session')
-      expect(items[2].type).toBe('session')
-      expect(items[3].type).toBe('session')
-      expect(items[4].type).toBe('session')
+      // All items have tree as terminal leaf
+      for (const item of items) {
+        expect(item.tree.type).toBe('terminal')
+      }
+      // Verify session IDs of the dissolved items
+      const dissolved = items.slice(1, 4)
+      const sessionIds = dissolved.map(i => i.tree.type === 'terminal' ? i.tree.sessionId : '')
+      expect(sessionIds.sort()).toEqual(['s1', 's2', 's3'])
     })
   })
 
   // ── closeLayout ────────────────────────────────────────────────────
 
   describe('closeLayout', () => {
-    it('removes the layout and returns all session IDs', () => {
+    it('removes the item and returns all session IDs', () => {
       const store = createWorkspaceStore()
-      const layoutId = store.getState().addLayoutItem('test', threePane(), 'p1')
+      const layoutId = store.getState().addItem('test', threePane(), 'p1')
 
       const sessionIds = store.getState().closeLayout(layoutId)
 
@@ -437,19 +420,18 @@ describe('Workspace Store', () => {
     })
   })
 
-  // ── renameLayout ───────────────────────────────────────────────────
+  // ── renameItem ─────────────────────────────────────────────────────
 
-  describe('renameLayout', () => {
-    it('updates a layout name', () => {
+  describe('renameItem', () => {
+    it('updates an item name and sets userRenamed', () => {
       const store = createWorkspaceStore()
-      const itemId = store.getState().addLayoutItem('old-name', twoPane(), 'p1')
+      const itemId = store.getState().addItem('old-name', twoPane(), 'p1')
 
-      store.getState().renameLayout(itemId, 'new-name')
+      store.getState().renameItem(itemId, 'new-name')
 
       const item = store.getState().items[0]
-      if (item.type === 'layout') {
-        expect(item.name).toBe('new-name')
-      }
+      expect(item.name).toBe('new-name')
+      expect(item.userRenamed).toBe(true)
     })
   })
 
@@ -497,21 +479,23 @@ describe('Workspace Store', () => {
   // ── Derived queries ────────────────────────────────────────────────
 
   describe('derived queries', () => {
-    it('getSessionsInLayout returns all session IDs in a layout', () => {
+    it('getSessionsInLayout returns all session IDs in a multi-pane item', () => {
       const store = createWorkspaceStore()
-      const itemId = store.getState().addLayoutItem('test', threePane(), 'p1')
+      const itemId = store.getState().addItem('test', threePane(), 'p1')
 
       const sessions = store.getState().getSessionsInLayout(itemId)
       expect(sessions.sort()).toEqual(['s1', 's2', 's3'])
     })
 
-    it('getSessionsInLayout returns empty array for non-layout item', () => {
+    it('getSessionsInLayout returns session for a 1-pane item', () => {
       const store = createWorkspaceStore()
       const itemId = store.getState().addSessionItem('s1')
-      expect(store.getState().getSessionsInLayout(itemId)).toEqual([])
+      const sessions = store.getState().getSessionsInLayout(itemId)
+      expect(sessions).toHaveLength(1)
+      expect(sessions[0]).toBe('s1')
     })
 
-    it('getActiveSessionId returns session ID for active standalone session', () => {
+    it('getActiveSessionId returns session ID for active 1-pane item', () => {
       const store = createWorkspaceStore()
       const itemId = store.getState().addSessionItem('s1')
       store.getState().setActiveItem(itemId)
@@ -519,9 +503,9 @@ describe('Workspace Store', () => {
       expect(store.getState().getActiveSessionId()).toBe('s1')
     })
 
-    it('getActiveSessionId returns focused session ID for active layout', () => {
+    it('getActiveSessionId returns focused session ID for active multi-pane item', () => {
       const store = createWorkspaceStore()
-      const itemId = store.getState().addLayoutItem('test', twoPane(), 'p2')
+      const itemId = store.getState().addItem('test', twoPane(), 'p2')
       store.getState().setActiveItem(itemId)
 
       expect(store.getState().getActiveSessionId()).toBe('s2')
@@ -532,7 +516,7 @@ describe('Workspace Store', () => {
       expect(store.getState().getActiveSessionId()).toBeNull()
     })
 
-    it('findItemBySessionId finds standalone session item', () => {
+    it('findItemBySessionId finds 1-pane item by session', () => {
       const store = createWorkspaceStore()
       const itemId = store.getState().addSessionItem('s1')
 
@@ -540,9 +524,9 @@ describe('Workspace Store', () => {
       expect(found?.id).toBe(itemId)
     })
 
-    it('findItemBySessionId finds layout containing session', () => {
+    it('findItemBySessionId finds multi-pane item containing session', () => {
       const store = createWorkspaceStore()
-      const itemId = store.getState().addLayoutItem('test', twoPane(), 'p1')
+      const itemId = store.getState().addItem('test', twoPane(), 'p1')
 
       const found = store.getState().findItemBySessionId('s2')
       expect(found?.id).toBe(itemId)
@@ -551,6 +535,42 @@ describe('Workspace Store', () => {
     it('findItemBySessionId returns undefined for unknown session', () => {
       const store = createWorkspaceStore()
       expect(store.getState().findItemBySessionId('nonexistent')).toBeUndefined()
+    })
+  })
+
+  // ── Drag-to-layout source item removal ─────────────────────────────
+
+  describe('drag-to-layout source item removal', () => {
+    it('removeItem cleans up source item after splitPane', () => {
+      const store = createWorkspaceStore()
+      const layoutId = store.getState().addItem('layout', leaf('p1', 's1'), 'p1')
+      const sourceId = store.getState().addSessionItem('s2')
+
+      store.getState().splitPane(layoutId, 'p1', 'h', 's2')
+      store.getState().removeItem(sourceId)
+
+      expect(store.getState().items).toHaveLength(1)
+      expect(store.getState().items[0].id).toBe(layoutId)
+      const sessions = store.getState().getSessionsInLayout(layoutId)
+      expect(sessions).toContain('s2')
+      expect(sessions).toContain('s1')
+    })
+
+    it('removeItem cleans up source item after splitting a 1-pane item', () => {
+      const store = createWorkspaceStore()
+      const targetId = store.getState().addSessionItem('s1')
+      const sourceId = store.getState().addSessionItem('s2')
+
+      // Get the paneId from the target's 1-pane tree
+      const target = store.getState().items[0]
+      const paneId = target.tree.type === 'terminal' ? target.tree.paneId : ''
+
+      store.getState().splitPane(targetId, paneId, 'h', 's2')
+      store.getState().removeItem(sourceId)
+
+      expect(store.getState().items).toHaveLength(1)
+      expect(store.getState().items[0].tree.type).toBe('split')
+      expect(store.getState().items[0].id).toBe(targetId)
     })
   })
 })

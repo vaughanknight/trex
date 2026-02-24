@@ -18,6 +18,7 @@ import { create } from 'zustand'
 import type { ClientMessage, ServerMessage, ConnectionState } from '../types/terminal'
 import { useActivityStore } from '../stores/activityStore'
 import { useSessionStore } from '../stores/sessions'
+import { useTmuxStore } from '../stores/tmux'
 
 // Session-specific message handlers
 export interface SessionHandlers {
@@ -133,8 +134,8 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
   },
 }))
 
-// Callback for session creation
-type SessionCreatedCallback = (sessionId: string, shellType: string) => void
+// Callback for session creation — includes optional tmux metadata
+type SessionCreatedCallback = (sessionId: string, shellType: string, tmuxSessionName?: string, tmuxWindowIndex?: number, cwd?: string) => void
 
 // Shared callback queue for session creation across all hook instances.
 // Must be module-level (not per-instance useRef) because the WebSocket is a
@@ -147,12 +148,15 @@ interface UseCentralWebSocketReturn {
   connectionState: ConnectionState
   connect: () => void
   disconnect: () => void
-  createSession: (onSessionCreated: SessionCreatedCallback) => void
+  createSession: (onSessionCreated: SessionCreatedCallback, cwd?: string) => void
+  createTmuxSession: (tmuxSessionName: string, tmuxWindowIndex: number, onSessionCreated: SessionCreatedCallback) => void
   closeSession: (sessionId: string) => void
+  detachSession: (sessionId: string) => void
   sendInput: (sessionId: string, data: string) => void
   sendResize: (sessionId: string, cols: number, rows: number) => void
   registerSession: (sessionId: string, handlers: SessionHandlers) => void
   unregisterSession: (sessionId: string) => void
+  requestTmuxSessions: () => void
 }
 
 /**
@@ -201,6 +205,9 @@ export function useCentralWebSocket(): UseCentralWebSocketReturn {
 
     ws.onopen = () => {
       setConnectionState('connected')
+      // Request initial tmux session list
+      const listMsg: ClientMessage = { type: 'list_tmux_sessions' }
+      ws.send(JSON.stringify(listMsg))
     }
 
     ws.onmessage = (event) => {
@@ -212,8 +219,14 @@ export function useCentralWebSocket(): UseCentralWebSocketReturn {
           // Dequeue the first pending callback (FIFO order matches server responses)
           const callback = pendingSessionCallbacks.shift()
           if (callback) {
-            callback(msg.sessionId, msg.shellType || 'sh')
+            callback(msg.sessionId, msg.shellType || 'sh', msg.tmuxSessionName, msg.tmuxWindowIndex, msg.cwd)
           }
+          return
+        }
+
+        // Handle tmux_sessions broadcast (before per-session routing)
+        if (msg.type === 'tmux_sessions') {
+          useTmuxStore.getState().setTmuxSessions(msg.tmuxSessions || [])
           return
         }
 
@@ -223,6 +236,12 @@ export function useCentralWebSocket(): UseCentralWebSocketReturn {
           for (const [sessionId, tmuxName] of Object.entries(msg.tmuxUpdates)) {
             store.updateTmuxSessionName(sessionId, tmuxName || null)
           }
+          return
+        }
+
+        // Handle cwd_update from backend
+        if (msg.type === 'cwd_update' && msg.sessionId && msg.cwd) {
+          useSessionStore.getState().updateCwd(msg.sessionId, msg.cwd)
           return
         }
 
@@ -273,7 +292,7 @@ export function useCentralWebSocket(): UseCentralWebSocketReturn {
 
   // Create a new session via WebSocket
   const createSession = useCallback(
-    (onSessionCreated: SessionCreatedCallback) => {
+    (onSessionCreated: SessionCreatedCallback, cwd?: string) => {
       // Queue callback for when session_created response arrives (supports rapid creation)
       pendingSessionCallbacks.push(onSessionCreated)
 
@@ -289,14 +308,14 @@ export function useCentralWebSocket(): UseCentralWebSocketReturn {
         const checkConnection = setInterval(() => {
           if (wsRef.current?.readyState === WebSocket.OPEN) {
             clearInterval(checkConnection)
-            const msg: ClientMessage = { type: 'create' }
+            const msg: ClientMessage = { type: 'create', ...(cwd ? { cwd } : {}) }
             wsRef.current.send(JSON.stringify(msg))
           }
         }, 50)
         // Timeout after 5 seconds
         setTimeout(() => clearInterval(checkConnection), 5000)
       } else if (wsRef.current.readyState === WebSocket.OPEN) {
-        const msg: ClientMessage = { type: 'create' }
+        const msg: ClientMessage = { type: 'create', ...(cwd ? { cwd } : {}) }
         wsRef.current.send(JSON.stringify(msg))
       } else if (wsRef.current.readyState === WebSocket.CONNECTING) {
         // WebSocket is connecting (e.g. rapid-fire session creates during URL restore).
@@ -304,7 +323,7 @@ export function useCentralWebSocket(): UseCentralWebSocketReturn {
         const checkConnection = setInterval(() => {
           if (wsRef.current?.readyState === WebSocket.OPEN) {
             clearInterval(checkConnection)
-            const msg: ClientMessage = { type: 'create' }
+            const msg: ClientMessage = { type: 'create', ...(cwd ? { cwd } : {}) }
             wsRef.current.send(JSON.stringify(msg))
           }
         }, 50)
@@ -345,6 +364,63 @@ export function useCentralWebSocket(): UseCentralWebSocketReturn {
     unregisterSession(sessionId)
   }, [unregisterSession])
 
+  // Detach a tmux session (tells backend to close PTY; tmux session survives)
+  const detachSession = useCallback((sessionId: string) => {
+    const currentWs = useWebSocketStore.getState().ws
+    if (currentWs?.readyState === WebSocket.OPEN) {
+      const msg: ClientMessage = { sessionId, type: 'detach' }
+      currentWs.send(JSON.stringify(msg))
+    }
+    unregisterSession(sessionId)
+  }, [unregisterSession])
+
+  // Create a tmux-attached session via WebSocket
+  const createTmuxSession = useCallback(
+    (tmuxSessionName: string, tmuxWindowIndex: number, onSessionCreated: SessionCreatedCallback) => {
+      pendingSessionCallbacks.push(onSessionCreated)
+
+      if (!wsRef.current) {
+        wsRef.current = useWebSocketStore.getState().ws
+      }
+
+      const sendCreate = () => {
+        const msg: ClientMessage = { type: 'create', tmuxSessionName, tmuxWindowIndex }
+        wsRef.current!.send(JSON.stringify(msg))
+      }
+
+      if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
+        connect()
+        const checkConnection = setInterval(() => {
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            clearInterval(checkConnection)
+            sendCreate()
+          }
+        }, 50)
+        setTimeout(() => clearInterval(checkConnection), 5000)
+      } else if (wsRef.current.readyState === WebSocket.OPEN) {
+        sendCreate()
+      } else if (wsRef.current.readyState === WebSocket.CONNECTING) {
+        const checkConnection = setInterval(() => {
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            clearInterval(checkConnection)
+            sendCreate()
+          }
+        }, 50)
+        setTimeout(() => clearInterval(checkConnection), 5000)
+      }
+    },
+    [connect]
+  )
+
+  // Request current tmux session list from backend
+  const requestTmuxSessions = useCallback(() => {
+    const currentWs = useWebSocketStore.getState().ws
+    if (currentWs?.readyState === WebSocket.OPEN) {
+      const msg: ClientMessage = { type: 'list_tmux_sessions' }
+      currentWs.send(JSON.stringify(msg))
+    }
+  }, [])
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -358,10 +434,13 @@ export function useCentralWebSocket(): UseCentralWebSocketReturn {
     connect,
     disconnect,
     createSession,
+    createTmuxSession,
     closeSession,
+    detachSession,
     sendInput,
     sendResize,
     registerSession,
     unregisterSession,
+    requestTmuxSessions,
   }
 }

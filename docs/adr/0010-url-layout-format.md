@@ -1,13 +1,13 @@
 ---
 id: ADR-0010
 title: "URI-safe compact prefix notation for URL layout encoding"
-status: accepted
+status: superseded
 date: 2026-02-10
 decision_makers: ["@vaughanknight"]
 consulted: []
 informed: []
 supersedes: null
-superseded_by: null
+superseded_by: ADR-0012
 tags: [url, serialization, layout, codec]
 complexity: CS-2
 ---

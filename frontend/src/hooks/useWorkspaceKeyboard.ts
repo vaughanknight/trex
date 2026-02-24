@@ -44,7 +44,7 @@ export function useWorkspaceKeyboard(): void {
         if (num >= 1 && num <= 8) {
           const { items, activeItemId } = ws
           const activeItem = items.find(i => i.id === activeItemId)
-          if (!activeItem || activeItem.type !== 'layout') return
+          if (!activeItem) return
 
           const leaves = getAllLeaves(activeItem.tree)
           const targetLeaf = leaves[num - 1]

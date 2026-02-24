@@ -14,6 +14,7 @@ import { Group, Panel, Separator } from 'react-resizable-panels'
 import type { PaneLayout as PaneLayoutType } from '../types/layout'
 import { deriveIsFocused } from '../lib/layoutTree'
 import { PaneContainer } from './PaneContainer'
+import { PreviewPaneContainer } from './PreviewPaneContainer'
 
 interface PaneLayoutProps {
   /** Workspace item ID this layout belongs to */
@@ -46,7 +47,7 @@ function renderNode(
   showTitleBar: boolean,
   path: string[],
 ): React.ReactElement {
-  if (node.type === 'leaf') {
+  if (node.type === 'terminal') {
     return (
       <PaneContainer
         key={node.paneId}
@@ -54,6 +55,19 @@ function renderNode(
         paneId={node.paneId}
         sessionId={node.sessionId}
         isFocused={deriveIsFocused(focusedPaneId, node.paneId)}
+        showTitleBar={showTitleBar}
+      />
+    )
+  }
+
+  if (node.type === 'preview') {
+    return (
+      <PreviewPaneContainer
+        key={node.paneId}
+        itemId={itemId}
+        paneId={node.paneId}
+        contentType={node.contentType}
+        source={node.source}
         showTitleBar={showTitleBar}
       />
     )

@@ -1,27 +1,22 @@
 /**
  * PaneTitleBar — Title bar for terminal panes.
  *
- * Two variants:
- * - standalone: Shows session name + [—][|][X] buttons. Not draggable.
- *   Split buttons convert standalone session to layout via workspace store.
- *   Close button closes the entire session.
+ * Shows drag handle + session name + [—][|][⏏][X] buttons. Draggable.
+ * Split buttons split the pane within the item's tree.
+ * Eject button detaches the pane as a separate 1-pane item.
+ * Close button closes the pane (or the entire item if last pane).
  *
- * - layout: Shows drag handle + session name + [—][|][⏏][X] buttons. Draggable.
- *   Split buttons split the pane within the layout.
- *   Eject button detaches the pane as a standalone session.
- *   Close button closes just the pane.
- *
- * @see /docs/plans/016-sidebar-url-overhaul/sidebar-url-overhaul-plan.md § Phase 2
+ * @see /docs/plans/022-unified-layout-architecture/unified-layout-architecture-plan.md
  */
 
 import { useCallback, useRef, useEffect, useState } from 'react'
 import { draggable } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
 import { setCustomNativeDragPreview } from '@atlaskit/pragmatic-drag-and-drop/element/set-custom-native-drag-preview'
-import { Columns2, Rows2, GripVertical, ArrowUpFromLine, X } from 'lucide-react'
+import { Columns2, Rows2, GripVertical, ArrowUpFromLine, X, Monitor } from 'lucide-react'
 import { useSessionStore } from '../stores/sessions'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useCentralWebSocket } from '../hooks/useCentralWebSocket'
-import { countPanes } from '../lib/layoutTree'
+import { countTerminalPanes } from '../lib/layoutTree'
 
 interface PaneTitleBarProps {
   /** Workspace item ID this pane belongs to */
@@ -29,35 +24,34 @@ interface PaneTitleBarProps {
   paneId: string
   sessionId: string
   isFocused: boolean
-  /** 'standalone' shows [—][|][X]; 'layout' shows drag handle + [—][|][⏏][X] */
-  variant?: 'standalone' | 'layout'
 }
 
-export function PaneTitleBar({ itemId, paneId, sessionId, isFocused, variant = 'layout' }: PaneTitleBarProps) {
+export function PaneTitleBar({ itemId, paneId, sessionId, isFocused }: PaneTitleBarProps) {
   const dragRef = useRef<HTMLDivElement>(null)
   const [isDragging, setIsDragging] = useState(false)
   const sessionName = useSessionStore(
     (state) => state.sessions.get(sessionId)?.name ?? 'Session'
   )
+  const tmuxSessionName = useSessionStore(
+    (state) => state.sessions.get(sessionId)?.tmuxSessionName
+  )
   const closePane = useWorkspaceStore((state) => state.closePane)
   const splitPane = useWorkspaceStore((state) => state.splitPane)
-  const convertToLayout = useWorkspaceStore((state) => state.convertToLayout)
   const detachPane = useWorkspaceStore((state) => state.detachPane)
   const removeSession = useSessionStore((state) => state.removeSession)
   const { createSession, closeSession } = useCentralWebSocket()
 
-  // Read pane count imperatively from the workspace item's tree (layout only)
+  // Read pane count imperatively from the workspace item's tree
   const getItemPaneCount = () => {
-    if (variant !== 'layout') return 0
     const item = useWorkspaceStore.getState().items.find(i => i.id === itemId)
-    if (item?.type === 'layout') return countPanes(item.tree)
-    return 0
+    if (!item) return 0
+    return countTerminalPanes(item.tree)
   }
-  const atCap = variant === 'layout' && getItemPaneCount() >= 8
+  const atCap = getItemPaneCount() >= 8
+  const isSinglePane = getItemPaneCount() <= 1
 
-  // Make title bar draggable for pane rearrangement (layout variant only)
+  // Make title bar draggable for pane rearrangement
   useEffect(() => {
-    if (variant !== 'layout') return
     const el = dragRef.current
     if (!el) return
 
@@ -90,19 +84,13 @@ export function PaneTitleBar({ itemId, paneId, sessionId, isFocused, variant = '
         setIsDragging(false)
       },
     })
-  }, [variant, paneId, sessionId, sessionName, itemId])
+  }, [paneId, sessionId, sessionName, itemId])
 
   const handleClose = useCallback(() => {
-    if (variant === 'standalone') {
-      // Close the entire session
-      closeSession(sessionId)
-      removeSession(sessionId)
-      useWorkspaceStore.getState().removeItem(itemId)
-    } else {
-      // Close just this pane within the layout
-      closePane(itemId, paneId)
-    }
-  }, [variant, closeSession, removeSession, closePane, itemId, paneId, sessionId])
+    closePane(itemId, paneId)
+    closeSession(sessionId)
+    removeSession(sessionId)
+  }, [closePane, closeSession, removeSession, itemId, paneId, sessionId])
 
   const addSession = useSessionStore((state) => state.addSession)
 
@@ -117,13 +105,9 @@ export function PaneTitleBar({ itemId, paneId, sessionId, isFocused, variant = '
         createdAt: Date.now(),
         userRenamed: false,
       })
-      if (variant === 'standalone') {
-        convertToLayout(itemId, 'h', newSessionId)
-      } else {
-        splitPane(itemId, paneId, 'h', newSessionId)
-      }
+      splitPane(itemId, paneId, 'h', newSessionId)
     })
-  }, [atCap, variant, createSession, addSession, convertToLayout, splitPane, itemId, paneId])
+  }, [atCap, createSession, addSession, splitPane, itemId, paneId])
 
   const handleSplitV = useCallback(() => {
     if (atCap) return
@@ -136,13 +120,9 @@ export function PaneTitleBar({ itemId, paneId, sessionId, isFocused, variant = '
         createdAt: Date.now(),
         userRenamed: false,
       })
-      if (variant === 'standalone') {
-        convertToLayout(itemId, 'v', newSessionId)
-      } else {
-        splitPane(itemId, paneId, 'v', newSessionId)
-      }
+      splitPane(itemId, paneId, 'v', newSessionId)
     })
-  }, [atCap, variant, createSession, addSession, convertToLayout, splitPane, itemId, paneId])
+  }, [atCap, createSession, addSession, splitPane, itemId, paneId])
 
   const handleEject = useCallback(() => {
     detachPane(itemId, paneId)
@@ -153,7 +133,7 @@ export function PaneTitleBar({ itemId, paneId, sessionId, isFocused, variant = '
       ref={dragRef}
       className={`
         flex items-center h-6 px-2 gap-1 text-xs select-none shrink-0
-        ${variant === 'layout' ? 'cursor-grab active:cursor-grabbing' : ''}
+        cursor-grab active:cursor-grabbing
         ${isFocused
           ? 'bg-muted border-b-2 border-primary text-foreground'
           : 'bg-muted/50 border-b border-border text-muted-foreground'
@@ -161,8 +141,15 @@ export function PaneTitleBar({ itemId, paneId, sessionId, isFocused, variant = '
       `}
       style={{ opacity: isDragging ? 0.4 : 1 }}
     >
-      {variant === 'layout' && (
-        <GripVertical className="size-3 text-muted-foreground/50 shrink-0" />
+      <GripVertical className="size-3 text-muted-foreground/50 shrink-0" />
+      {tmuxSessionName && (
+        <span
+          className="inline-flex items-center gap-0.5 px-1 rounded bg-green-500/20 text-green-500 text-[10px] shrink-0"
+          title={`Attached to tmux: ${tmuxSessionName}`}
+        >
+          <Monitor className="size-2.5" />
+          tmux
+        </span>
       )}
       <span className="truncate flex-1 font-mono">{sessionName}</span>
       <button
@@ -181,7 +168,7 @@ export function PaneTitleBar({ itemId, paneId, sessionId, isFocused, variant = '
       >
         <Rows2 className="size-3" />
       </button>
-      {variant === 'layout' && (
+      {!isSinglePane && (
         <button
           onClick={handleEject}
           className="hover:text-foreground transition-colors px-0.5"
@@ -193,7 +180,7 @@ export function PaneTitleBar({ itemId, paneId, sessionId, isFocused, variant = '
       <button
         onClick={handleClose}
         className="hover:text-destructive transition-colors px-0.5"
-        title={variant === 'standalone' ? 'Close session' : 'Close pane'}
+        title="Close pane"
       >
         <X className="size-3" />
       </button>

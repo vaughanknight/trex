@@ -16,8 +16,10 @@ import {
   type WorkspaceURLSchema,
   countSchemaSessions,
   buildWorkspaceSchema,
+  urlTreeToLayout,
+  collectLeafMetadata,
+  getPaneIdByIndex,
 } from '@/lib/workspaceCodec'
-import { urlTreeToLayout, parseLayout } from '@/lib/layoutCodec'
 import { getAllLeaves } from '@/lib/layoutTree'
 import { useSessionStore } from '@/stores/sessions'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -41,7 +43,7 @@ export function useURLSync(): UseURLSyncReturn {
   const pendingSchemaRef = useRef<WorkspaceURLSchema | null>(null)
   const writeURLRef = useRef<(() => void) | null>(null)
 
-  const { createSession } = useCentralWebSocket()
+  const { createSession, createTmuxSession } = useCentralWebSocket()
   const addSession = useSessionStore((state) => state.addSession)
 
   // Recreate workspace from URL schema
@@ -69,32 +71,44 @@ export function useURLSync(): UseURLSyncReturn {
       const urlItem = schema.i[itemIndex]
       itemIndex++
 
-      if (urlItem.t === 's') {
-        createSession((sessionId, shellType) => {
-          addSession({
-            id: sessionId,
-            name: `${shellType}-${createdItemIds.length + 1}`,
-            shellType,
-            status: 'active' as const,
-            createdAt: Date.now() + createdItemIds.length,
-            userRenamed: false,
-          })
-          const itemId = ws.addSessionItem(sessionId)
-          createdItemIds.push(itemId)
-          processNextItem()
-        })
-      } else if (urlItem.t === 'l') {
-        try {
-          const urlTree = parseLayout(urlItem.r)
-          const runtimeTree = urlTreeToLayout(urlTree)
-          const leaves = getAllLeaves(runtimeTree)
+      try {
+        const runtimeTree = urlTreeToLayout(urlItem.t)
+        const focusedPaneId = urlItem.fp != null && urlItem.fp >= 0
+          ? getPaneIdByIndex(runtimeTree, urlItem.fp)
+          : null
+        const leaves = getAllLeaves(runtimeTree)
+        const leafMeta = collectLeafMetadata(urlItem.t)
 
-          const itemId = ws.addLayoutItem(urlItem.n, runtimeTree, leaves[0]?.paneId ?? null)
-          createdItemIds.push(itemId)
+        const itemId = ws.addItem(urlItem.n, runtimeTree, focusedPaneId ?? leaves[0]?.paneId ?? null)
+        createdItemIds.push(itemId)
 
-          let leafCompleted = 0
-          for (const leaf of leaves) {
-            createSession((sessionId: string, shellType: string) => {
+        let leafCompleted = 0
+        const totalLeaves = leaves.length
+
+        for (let li = 0; li < leaves.length; li++) {
+          const leaf = leaves[li]
+          const meta = leafMeta[li]
+
+          if (meta?.tm) {
+            // tmux leaf — reconnect silently
+            createTmuxSession(meta.tm, meta.tw ?? 0, (sessionId, shellType, tmuxSessionName, _twIdx, cwd) => {
+              ws.replaceSessionInPane(itemId, leaf.paneId, sessionId)
+              addSession({
+                id: sessionId,
+                name: tmuxSessionName || meta.tm!,
+                shellType,
+                status: 'active' as const,
+                createdAt: Date.now() + leafCompleted,
+                userRenamed: false,
+                tmuxSessionName: tmuxSessionName || meta.tm!,
+                cwd,
+              })
+              leafCompleted++
+              if (leafCompleted >= totalLeaves) processNextItem()
+            })
+          } else if (meta?.c) {
+            // Leaf with cwd — create session with initial directory
+            createSession((sessionId, shellType, _tmux, _twIdx, cwd) => {
               ws.replaceSessionInPane(itemId, leaf.paneId, sessionId)
               addSession({
                 id: sessionId,
@@ -103,23 +117,38 @@ export function useURLSync(): UseURLSyncReturn {
                 status: 'active' as const,
                 createdAt: Date.now() + leafCompleted,
                 userRenamed: false,
+                cwd: cwd ?? meta.c,
               })
               leafCompleted++
-              if (leafCompleted >= leaves.length) {
-                processNextItem()
-              }
+              if (leafCompleted >= totalLeaves) processNextItem()
+            }, meta.c)
+          } else {
+            // Regular session
+            createSession((sessionId, shellType, _tmux, _twIdx, cwd) => {
+              ws.replaceSessionInPane(itemId, leaf.paneId, sessionId)
+              addSession({
+                id: sessionId,
+                name: `${shellType}-${leafCompleted + 1}`,
+                shellType,
+                status: 'active' as const,
+                createdAt: Date.now() + leafCompleted,
+                userRenamed: false,
+                cwd,
+              })
+              leafCompleted++
+              if (leafCompleted >= totalLeaves) processNextItem()
             })
           }
-        } catch {
-          processNextItem()
         }
-      } else {
+
+        if (totalLeaves === 0) processNextItem()
+      } catch {
         processNextItem()
       }
     }
 
     processNextItem()
-  }, [createSession, addSession])
+  }, [createSession, createTmuxSession, addSession])
 
   // Handle URL params on mount
   useEffect(() => {

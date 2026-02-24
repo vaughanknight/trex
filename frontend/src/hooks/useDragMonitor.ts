@@ -33,7 +33,7 @@ export function useDragMonitor(): DragMonitorState {
     return monitorForElements({
       onDragStart({ source }) {
         const data = source.data as Record<string, unknown>
-        if (data.type === 'sidebar-session' || data.type === 'pane') {
+        if (data.type === 'sidebar-session' || data.type === 'sidebar-tmux-session' || data.type === 'pane') {
           setState({
             isDragActive: true,
             dragData: {

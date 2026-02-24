@@ -18,6 +18,16 @@ import {
   resetFakeGPUContext,
 } from '../../../test/fakeGPUContext'
 import { Terminal } from '../../Terminal'
+import { ThemePreviewProvider } from '../../../contexts/ThemePreviewContext'
+import type { ReactNode } from 'react'
+
+// Wrapper to provide required context providers for Terminal
+function Providers({ children }: { children: ReactNode }) {
+  return <ThemePreviewProvider>{children}</ThemePreviewProvider>
+}
+
+const renderWithProviders = (ui: React.ReactElement) =>
+  render(ui, { wrapper: Providers })
 
 // Mock useCentralWebSocket to avoid real WebSocket connections
 vi.mock('../../../hooks/useCentralWebSocket', () => ({
@@ -37,10 +47,13 @@ vi.mock('@xterm/xterm', () => {
       rows = 24
       cols = 80
       options = {}
+      element = document.createElement('div')
       loadAddon = vi.fn()
       open = vi.fn()
       dispose = vi.fn()
       onData = vi.fn().mockReturnValue({ dispose: vi.fn() })
+      onTitleChange = vi.fn().mockReturnValue({ dispose: vi.fn() })
+      registerLinkProvider = vi.fn().mockReturnValue({ dispose: vi.fn() })
       write = vi.fn()
       writeln = vi.fn()
       refresh = vi.fn()
@@ -106,7 +119,7 @@ describe('WebGL Pool Integration', () => {
       const sessionId = 'test-session-1'
 
       // Render terminal with isActive=true
-      render(<Terminal sessionId={sessionId} isFocused={true} />)
+      renderWithProviders(<Terminal sessionId={sessionId} isFocused={true} />)
 
       // Wait for effects to run
       await act(async () => {
@@ -119,46 +132,46 @@ describe('WebGL Pool Integration', () => {
       expect(pool.getStats().activeCount).toBe(1)
     })
 
-    test('inactive terminal does not acquire WebGL', async () => {
+    test('inactive terminal still acquires WebGL (all visible terminals get WebGL)', async () => {
       /**
        * Test Doc:
-       * - Why: Inactive terminals should not consume pool capacity
-       * - Contract: When isActive=false, terminal does NOT acquire
-       * - Usage Notes: Terminal renders but without WebGL
-       * - Quality Contribution: Prevents unnecessary pool consumption
-       * - Worked Example: isActive=false → pool.hasWebGL === false
+       * - Why: All visible (mounted) terminals acquire WebGL regardless of focus
+       * - Contract: WebGL is acquired on mount, not based on isFocused
+       * - Usage Notes: Pool manages capacity; isFocused controls output buffering
+       * - Quality Contribution: Documents actual acquire-on-mount behavior
+       * - Worked Example: isFocused=false, mounted → pool.hasWebGL === true
        */
       const sessionId = 'test-session-inactive'
 
       // Render terminal with isActive=false
-      render(<Terminal sessionId={sessionId} isFocused={false} />)
+      renderWithProviders(<Terminal sessionId={sessionId} isFocused={false} />)
 
       // Wait for effects
       await act(async () => {
         await new Promise((r) => setTimeout(r, 50))
       })
 
-      // Assert pool does NOT have WebGL for this session
+      // WebGL is acquired on mount for all visible terminals
       const pool = useWebGLPoolStore.getState()
-      expect(pool.hasWebGL(sessionId)).toBe(false)
-      expect(pool.getStats().activeCount).toBe(0)
+      expect(pool.hasWebGL(sessionId)).toBe(true)
+      expect(pool.getStats().activeCount).toBe(1)
     })
   })
 
-  describe('release on deactivate', () => {
-    test('terminal releases WebGL when becoming inactive', async () => {
+  describe('release on unmount', () => {
+    test('terminal retains WebGL when becoming inactive (released on unmount)', async () => {
       /**
        * Test Doc:
-       * - Why: Inactive terminals must release pool resources
-       * - Contract: When isActive changes false→true, terminal releases
-       * - Usage Notes: Pool disposes addon, Terminal uses DOM renderer
-       * - Quality Contribution: Prevents pool exhaustion
-       * - Worked Example: isActive true→false → pool.hasWebGL === false
+       * - Why: WebGL is acquired on mount, retained while mounted
+       * - Contract: isFocused change does NOT release WebGL; unmount does
+       * - Usage Notes: Pool manages capacity via mount/unmount lifecycle
+       * - Quality Contribution: Documents actual release-on-unmount behavior
+       * - Worked Example: isFocused true→false → pool.hasWebGL still true
        */
       const sessionId = 'test-session-release'
 
       // Render active terminal
-      const { rerender } = render(
+      const { rerender, unmount } = renderWithProviders(
         <Terminal sessionId={sessionId} isFocused={true} />
       )
 
@@ -170,68 +183,54 @@ describe('WebGL Pool Integration', () => {
       // Verify acquired
       expect(useWebGLPoolStore.getState().hasWebGL(sessionId)).toBe(true)
 
-      // Deactivate terminal
+      // Deactivate terminal — WebGL is retained (acquired on mount, not focus)
       rerender(<Terminal sessionId={sessionId} isFocused={false} />)
 
-      // Wait for release
       await act(async () => {
         await new Promise((r) => setTimeout(r, 50))
       })
 
-      // Assert released
-      const pool = useWebGLPoolStore.getState()
-      expect(pool.hasWebGL(sessionId)).toBe(false)
-      expect(pool.getStats().activeCount).toBe(0)
+      // Still has WebGL while mounted
+      expect(useWebGLPoolStore.getState().hasWebGL(sessionId)).toBe(true)
+
+      // Unmount releases WebGL
+      unmount()
+      expect(useWebGLPoolStore.getState().hasWebGL(sessionId)).toBe(false)
+      expect(useWebGLPoolStore.getState().getStats().activeCount).toBe(0)
     })
   })
 
   describe('session switch', () => {
-    test('session switch releases old and acquires new', async () => {
+    test('both mounted terminals acquire WebGL from pool', async () => {
       /**
        * Test Doc:
-       * - Why: Session switching must transfer WebGL correctly
-       * - Contract: Old session releases, new session acquires
-       * - Usage Notes: Sequence matters for flicker prevention
-       * - Quality Contribution: Verifies no WebGL leak on switch
-       * - Worked Example: Switch A→B → A released, B acquired
+       * - Why: All visible terminals acquire WebGL on mount
+       * - Contract: Both mounted terminals get WebGL regardless of focus
+       * - Usage Notes: Pool manages capacity; both fit within maxSize
+       * - Quality Contribution: Verifies multi-terminal WebGL allocation
+       * - Worked Example: A+B mounted → both have WebGL, activeCount=2
        */
       const sessionA = 'session-a'
       const sessionB = 'session-b'
 
-      // Render Terminal A as active
-      const { rerender } = render(
+      // Render both terminals
+      renderWithProviders(
         <>
           <Terminal sessionId={sessionA} isFocused={true} />
           <Terminal sessionId={sessionB} isFocused={false} />
         </>
       )
 
-      // Wait for A to acquire
+      // Wait for acquire
       await act(async () => {
         await new Promise((r) => setTimeout(r, 50))
       })
 
-      expect(useWebGLPoolStore.getState().hasWebGL(sessionA)).toBe(true)
-      expect(useWebGLPoolStore.getState().hasWebGL(sessionB)).toBe(false)
-
-      // Switch to B
-      rerender(
-        <>
-          <Terminal sessionId={sessionA} isFocused={false} />
-          <Terminal sessionId={sessionB} isFocused={true} />
-        </>
-      )
-
-      // Wait for switch
-      await act(async () => {
-        await new Promise((r) => setTimeout(r, 50))
-      })
-
-      // Assert A released, B acquired
+      // Both mounted terminals acquire WebGL
       const pool = useWebGLPoolStore.getState()
-      expect(pool.hasWebGL(sessionA)).toBe(false)
+      expect(pool.hasWebGL(sessionA)).toBe(true)
       expect(pool.hasWebGL(sessionB)).toBe(true)
-      expect(pool.getStats().activeCount).toBe(1)
+      expect(pool.getStats().activeCount).toBe(2)
     })
   })
 
@@ -248,7 +247,7 @@ describe('WebGL Pool Integration', () => {
       const sessionId = 'test-session-unmount'
 
       // Render active terminal
-      const { unmount } = render(
+      const { unmount } = renderWithProviders(
         <Terminal sessionId={sessionId} isFocused={true} />
       )
 
@@ -275,19 +274,19 @@ describe('WebGL Pool Integration', () => {
   })
 
   describe('stress tests', () => {
-    test('rapid switching (10x) ends with correct state', async () => {
+    test('rapid switching (10x) retains WebGL for both mounted terminals', async () => {
       /**
        * Test Doc:
-       * - Why: Rapid session switching must not corrupt pool state
-       * - Contract: Final session has WebGL, others don't
-       * - Usage Notes: Per CD-05, pool is idempotent
+       * - Why: Rapid focus switching must not corrupt pool state
+       * - Contract: Both mounted terminals retain WebGL (acquired on mount)
+       * - Usage Notes: Per CD-05, pool is idempotent; focus doesn't affect WebGL
        * - Quality Contribution: Prevents race condition bugs
-       * - Worked Example: 10 switches → final session has WebGL
+       * - Worked Example: 10 switches → both sessions still have WebGL
        */
       const sessionA = 'session-rapid-a'
       const sessionB = 'session-rapid-b'
 
-      const { rerender } = render(
+      const { rerender } = renderWithProviders(
         <>
           <Terminal sessionId={sessionA} isFocused={true} />
           <Terminal sessionId={sessionB} isFocused={false} />
@@ -314,11 +313,11 @@ describe('WebGL Pool Integration', () => {
         await new Promise((r) => setTimeout(r, 100))
       })
 
-      // After 10 switches (0-9), i=9 is odd, so A is inactive, B is active
+      // Both terminals remain mounted, both retain WebGL
       const pool = useWebGLPoolStore.getState()
-      expect(pool.hasWebGL(sessionA)).toBe(false)
+      expect(pool.hasWebGL(sessionA)).toBe(true)
       expect(pool.hasWebGL(sessionB)).toBe(true)
-      expect(pool.getStats().activeCount).toBe(1)
+      expect(pool.getStats().activeCount).toBe(2)
     })
   })
 
@@ -335,7 +334,7 @@ describe('WebGL Pool Integration', () => {
       const sessionId = 'test-session-context-loss'
 
       // Render active terminal
-      render(<Terminal sessionId={sessionId} isFocused={true} />)
+      renderWithProviders(<Terminal sessionId={sessionId} isFocused={true} />)
 
       // Wait for acquire
       await act(async () => {
@@ -373,7 +372,7 @@ describe('WebGL Pool Integration', () => {
       const session2 = 'session-exhaust-2'
 
       // First acquire to trigger detection
-      render(<Terminal sessionId={session1} isFocused={true} />)
+      renderWithProviders(<Terminal sessionId={session1} isFocused={true} />)
       await act(async () => {
         await new Promise((r) => setTimeout(r, 50))
       })
@@ -382,7 +381,7 @@ describe('WebGL Pool Integration', () => {
       useWebGLPoolStore.getState().setMaxSize(1)
 
       // Render second active terminal (should not get WebGL)
-      render(<Terminal sessionId={session2} isFocused={true} />)
+      renderWithProviders(<Terminal sessionId={session2} isFocused={true} />)
       await act(async () => {
         await new Promise((r) => setTimeout(r, 50))
       })

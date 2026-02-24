@@ -3,14 +3,12 @@ import { SidebarProvider, SidebarInset } from './components/ui/sidebar'
 import { SessionSidebar } from './components/SessionSidebar'
 import { SettingsPanel } from './components/SettingsPanel'
 import { EmptyState } from './components/EmptyState'
-import { PaneContainer } from './components/PaneContainer'
 import { PaneLayout } from './components/PaneLayout'
 import { LoginPage } from './components/LoginPage'
-import { FirstDragDropZone } from './components/FirstDragDropZone'
 import { ThemePreviewProvider } from './contexts/ThemePreviewContext'
 import { useSessionStore, selectSessionCount } from './stores/sessions'
 import { useUIStore, selectSidebarCollapsed, selectSettingsPanelOpen } from './stores/ui'
-import { useWorkspaceStore, selectActiveItemId, selectActiveSessionId } from './stores/workspace'
+import { useWorkspaceStore, selectActiveItemId } from './stores/workspace'
 import { useAuthStore, selectAuthEnabled, selectUser, selectAuthLoading } from './stores/auth'
 import { useURLSync } from './hooks/useURLSync'
 import { useWorkspaceKeyboard } from './hooks/useWorkspaceKeyboard'
@@ -39,8 +37,8 @@ function App() {
   // Workspace state — subscribe to active item by reference.
   // splitPane/closePane etc. produce new item objects (immutable update),
   // so reference equality naturally triggers re-render when tree changes.
+  // Workspace state
   const activeItemId = useWorkspaceStore(selectActiveItemId)
-  const activeSessionId = useWorkspaceStore(selectActiveSessionId)
   const activeItem = useWorkspaceStore(
     (state) => state.activeItemId
       ? state.items.find(i => i.id === state.activeItemId)
@@ -84,23 +82,13 @@ function App() {
         <SidebarInset className="app">
           {showEmptyState ? (
             <EmptyState />
-          ) : activeItem?.type === 'layout' ? (
+          ) : activeItem ? (
             <PaneLayout
               itemId={activeItem.id}
               layout={activeItem.tree}
               focusedPaneId={activeItem.focusedPaneId}
               showTitleBar={true}
             />
-          ) : activeItem?.type === 'session' && activeSessionId ? (
-            <FirstDragDropZone itemId={activeItem.id} activeSessionId={activeSessionId}>
-              <PaneContainer
-                itemId={activeItem.id}
-                paneId={activeSessionId}
-                sessionId={activeSessionId}
-                isFocused={true}
-                variant="standalone"
-              />
-            </FirstDragDropZone>
           ) : null}
         </SidebarInset>
       </SidebarProvider>

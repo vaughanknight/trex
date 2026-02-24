@@ -13,15 +13,17 @@
  */
 
 import { useState, useRef, useEffect, startTransition } from 'react'
-import { Columns2 } from 'lucide-react'
+import { Columns2, Terminal, X } from 'lucide-react'
+import { LayoutIcon } from './LayoutIcon'
+import { useSettingsStore } from '@/stores/settings'
 import { draggable, dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
 import { setCustomNativeDragPreview } from '@atlaskit/pragmatic-drag-and-drop/element/set-custom-native-drag-preview'
 import { attachClosestEdge, extractClosestEdge } from '@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge'
 import { useWorkspaceStore, selectActiveItemId } from '@/stores/workspace'
 import { useSessionStore } from '@/stores/sessions'
 import { useCentralWebSocket } from '@/hooks/useCentralWebSocket'
-import { getAllLeaves } from '@/lib/layoutTree'
-import type { WorkspaceLayoutItem } from '@/types/workspace'
+import { getAllLeaves, getTerminalLeaves } from '@/lib/layoutTree'
+import type { WorkspaceItem } from '@/types/workspace'
 import {
   SidebarMenuItem,
   SidebarMenuButton,
@@ -30,7 +32,7 @@ import { LayoutContextMenu } from './LayoutContextMenu'
 import { cn } from '@/lib/utils'
 
 interface LayoutSidebarItemProps {
-  item: WorkspaceLayoutItem
+  item: WorkspaceItem
   index: number
 }
 
@@ -43,14 +45,18 @@ export function LayoutSidebarItem({ item, index }: LayoutSidebarItemProps) {
 
   const activeItemId = useWorkspaceStore(selectActiveItemId)
   const setActiveItem = useWorkspaceStore((state) => state.setActiveItem)
-  const dissolveLayout = useWorkspaceStore((state) => state.dissolveLayout)
+  const dissolveAll = useWorkspaceStore((state) => state.dissolveAll)
   const closeLayout = useWorkspaceStore((state) => state.closeLayout)
-  const renameLayout = useWorkspaceStore((state) => state.renameLayout)
+  const renameItem = useWorkspaceStore((state) => state.renameItem)
   const removeSession = useSessionStore((state) => state.removeSession)
   const { closeSession } = useCentralWebSocket()
 
+  const layoutIconsEnabled = useSettingsStore((s) => s.layoutIconsEnabled)
+
   const isActive = item.id === activeItemId
   const leaves = getAllLeaves(item.tree)
+  const terminalLeaves = getTerminalLeaves(item.tree)
+  const isSinglePane = terminalLeaves.length === 1
 
   // Refs for stable callbacks
   const itemRef = useRef(item)
@@ -69,12 +75,19 @@ export function LayoutSidebarItem({ item, index }: LayoutSidebarItemProps) {
         return !isRenaming
       },
       getInitialData() {
-        return {
-          type: 'sidebar-layout',
-          itemId: itemRef.current.id,
+        const currentItem = itemRef.current
+        const tLeaves = getTerminalLeaves(currentItem.tree)
+        const data: Record<string, unknown> = {
+          type: tLeaves.length === 1 ? 'sidebar-session' : 'sidebar-layout',
+          itemId: currentItem.id,
           index: indexRef.current,
-          name: itemRef.current.name,
+          name: currentItem.name,
         }
+        // For single-pane items, include sessionId so drop zones can use it
+        if (tLeaves.length === 1) {
+          data.sessionId = tLeaves[0].sessionId
+        }
+        return data
       },
       onGenerateDragPreview({ nativeSetDragImage }) {
         setCustomNativeDragPreview({
@@ -138,7 +151,7 @@ export function LayoutSidebarItem({ item, index }: LayoutSidebarItemProps) {
   }
 
   const handleDissolve = () => {
-    dissolveLayout(item.id)
+    dissolveAll(item.id)
   }
 
   const handleCloseLayout = () => {
@@ -157,7 +170,7 @@ export function LayoutSidebarItem({ item, index }: LayoutSidebarItemProps) {
   const handleRenameSubmit = () => {
     const trimmed = renameValue.trim()
     if (trimmed) {
-      renameLayout(item.id, trimmed)
+      renameItem(item.id, trimmed)
     }
     setIsRenaming(false)
   }
@@ -178,7 +191,13 @@ export function LayoutSidebarItem({ item, index }: LayoutSidebarItemProps) {
           onClick={handleClick}
           tooltip={isRenaming ? undefined : `${item.name} (${leaves.length} panes)`}
         >
-          <Columns2 className="size-4 text-muted-foreground" />
+          {layoutIconsEnabled ? (
+            <LayoutIcon tree={item.tree} focusedPaneId={item.focusedPaneId ?? undefined} />
+          ) : isSinglePane ? (
+            <Terminal className="size-4 text-muted-foreground" />
+          ) : (
+            <Columns2 className="size-4 text-muted-foreground" />
+          )}
           {isRenaming ? (
             <input
               type="text"
@@ -196,8 +215,17 @@ export function LayoutSidebarItem({ item, index }: LayoutSidebarItemProps) {
           ) : (
             <span className="flex-1 truncate">{item.name}</span>
           )}
-          <span className="text-xs text-muted-foreground tabular-nums">{leaves.length}</span>
+          {!isSinglePane && (
+            <span className="text-xs text-muted-foreground tabular-nums">{leaves.length}</span>
+          )}
         </SidebarMenuButton>
+        <button
+          onClick={(e) => { e.stopPropagation(); handleCloseLayout() }}
+          className="absolute right-1 top-1/2 -translate-y-1/2 p-0.5 rounded opacity-0 group-hover/menu-item:opacity-100 hover:text-destructive transition-all"
+          title="Close"
+        >
+          <X className="size-3" />
+        </button>
         {closestEdge && (
           <div
             className={cn(

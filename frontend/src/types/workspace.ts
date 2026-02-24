@@ -1,42 +1,30 @@
 /**
- * Workspace Types — Data model for the multi-layout workspace.
+ * Workspace Types — Data model for the unified workspace.
  *
- * A workspace is an ordered list of items, each either:
- * - A standalone session (single terminal)
- * - A layout (named group of sessions in a split tree)
+ * Every workspace item is a layout — a container with a binary tree of
+ * 1 or more panes. A single-terminal item is simply a layout with one pane.
  *
- * Replaces the single-layout model from Plan 015.
- * Each layout owns its own split tree and focused pane.
+ * Replaces the two-type model (session/layout) from Plan 016.
+ * Each item owns its own split tree and focused pane.
  *
- * @see /docs/plans/016-sidebar-url-overhaul/sidebar-url-overhaul-plan.md § Phase 1
+ * @see /docs/plans/022-unified-layout-architecture/unified-layout-architecture-plan.md
  */
 
-import type { PaneLayout, SplitDirection } from './layout'
+import type { PaneLayout, SplitDirection, LeafFactory } from './layout'
 
-/** A standalone session in the workspace */
-export interface WorkspaceSessionItem {
-  readonly type: 'session'
-  /** Unique workspace item ID (not the sessionId) */
-  readonly id: string
-  /** Backend session ID this item displays */
-  readonly sessionId: string
-}
-
-/** A named layout containing multiple sessions in a split arrangement */
-export interface WorkspaceLayoutItem {
-  readonly type: 'layout'
+/** A workspace item — always a layout with 1+ panes */
+export interface WorkspaceItem {
   /** Unique workspace item ID */
   readonly id: string
-  /** User-visible layout name (auto-generated from first session, renameable) */
+  /** User-visible name (auto-derived from first session, renameable) */
   name: string
-  /** Binary split tree of panes */
+  /** Binary split tree of panes (single leaf for 1-pane items) */
   tree: PaneLayout
-  /** Which pane has keyboard focus within this layout */
+  /** Which pane has keyboard focus within this item */
   focusedPaneId: string | null
+  /** Whether the user explicitly renamed this item */
+  userRenamed: boolean
 }
-
-/** A workspace item is either a standalone session or a layout */
-export type WorkspaceItem = WorkspaceSessionItem | WorkspaceLayoutItem
 
 /** Workspace store state */
 export interface WorkspaceState {
@@ -50,10 +38,10 @@ export interface WorkspaceState {
 export interface WorkspaceActions {
   // ── Item CRUD ──────────────────────────────────────────────────────
 
-  /** Add a standalone session item to the workspace */
+  /** Add a new workspace item */
+  addItem: (name: string, tree: PaneLayout, focusedPaneId?: string | null) => string
+  /** Convenience: add a 1-pane item for a session */
   addSessionItem: (sessionId: string) => string
-  /** Add a layout item to the workspace */
-  addLayoutItem: (name: string, tree: PaneLayout, focusedPaneId?: string | null) => string
   /** Remove a workspace item by its item ID */
   removeItem: (itemId: string) => void
   /** Set which workspace item is active (visible) */
@@ -66,39 +54,41 @@ export interface WorkspaceActions {
   /** Move an item from one position to another in the sidebar order */
   reorderItem: (fromIndex: number, toIndex: number) => void
 
-  // ── Layout operations (scoped to a specific layout item) ──────────
+  // ── Layout operations (scoped to a specific item) ──────────────────
 
-  /** Split a pane within a layout, creating a new session pane */
-  splitPane: (itemId: string, paneId: string, direction: SplitDirection, newSessionId: string) => void
-  /** Close a pane within a layout. Auto-dissolves to standalone if 1 pane remains */
+  /** Split a pane within an item, creating a new session pane */
+  splitPane: (itemId: string, paneId: string, direction: SplitDirection, newSessionId: string, insertBefore?: boolean) => void
+  /** Split a pane with a custom leaf factory (DYK-08: content-agnostic) */
+  splitPaneWith: (itemId: string, paneId: string, direction: SplitDirection, createLeaf: LeafFactory, insertBefore?: boolean) => void
+  /** Close a pane within an item */
   closePane: (itemId: string, paneId: string) => void
-  /** Move a pane within a layout */
+  /** Move a pane within an item */
   movePane: (itemId: string, sourcePaneId: string, targetPaneId: string, direction: SplitDirection) => void
-  /** Set which pane is focused within a layout */
+  /** Set which pane is focused within an item */
   setFocusedPane: (itemId: string, paneId: string | null) => void
-  /** Update the ratio of a split node at the given path within a layout */
+  /** Update the ratio of a split node at the given path */
   setRatio: (itemId: string, path: ('first' | 'second')[], ratio: number) => void
-  /** Detach a pane from a layout, returning it as a standalone session */
+  /** Detach a pane, returning it as a new 1-pane item */
   detachPane: (itemId: string, paneId: string) => string | null
   /** Replace the session in a pane (for restarting dead sessions) */
   replaceSessionInPane: (itemId: string, paneId: string, newSessionId: string) => void
 
-  // ── Layout lifecycle ───────────────────────────────────────────────
+  // ── Item lifecycle ─────────────────────────────────────────────────
 
-  /** Convert a standalone session to a layout by splitting it */
-  convertToLayout: (itemId: string, direction: SplitDirection, newSessionId: string) => void
-  /** Dissolve a layout: all panes become standalone sessions at the layout's position */
-  dissolveLayout: (itemId: string) => void
-  /** Close an entire layout: remove all sessions */
+  /** Dissolve All: each terminal pane becomes a separate 1-pane item */
+  dissolveAll: (itemId: string) => void
+  /** Close an entire item: remove all sessions */
   closeLayout: (itemId: string) => string[]
-  /** Rename a layout */
-  renameLayout: (itemId: string, name: string) => void
+  /** Rename an item */
+  renameItem: (itemId: string, name: string) => void
+  /** Clear a renamed item back to auto-derived name */
+  clearItemName: (itemId: string) => void
 
   // ── Derived queries ────────────────────────────────────────────────
 
-  /** Get all session IDs that are part of a specific layout */
+  /** Get all session IDs in an item's tree */
   getSessionsInLayout: (itemId: string) => string[]
-  /** Get the focused session ID within the active layout (or the active standalone session) */
+  /** Get the focused session ID within the active item */
   getActiveSessionId: () => string | null
   /** Find which workspace item contains a given session ID */
   findItemBySessionId: (sessionId: string) => WorkspaceItem | undefined

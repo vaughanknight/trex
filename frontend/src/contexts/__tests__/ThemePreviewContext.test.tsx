@@ -5,8 +5,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { render, screen, act } from '@testing-library/react'
 import { ThemePreviewProvider, useThemePreview } from '../ThemePreviewContext'
 
 function TestComponent() {
@@ -31,28 +30,44 @@ describe('ThemePreviewContext', () => {
   })
 
   it('updates preview when setPreviewTheme called', async () => {
-    const user = userEvent.setup()
+    vi.useFakeTimers()
     render(
       <ThemePreviewProvider>
         <TestComponent />
       </ThemePreviewProvider>
     )
 
-    await user.click(screen.getByText('Set Dracula'))
+    // Directly click the button using fireEvent (avoids userEvent timer conflicts)
+    await act(async () => {
+      screen.getByText('Set Dracula').click()
+    })
+    // Flush the 30ms debounce
+    await act(async () => { vi.advanceTimersByTime(50) })
     expect(screen.getByTestId('preview')).toHaveTextContent('dracula')
+    vi.useRealTimers()
   })
 
   it('clears preview when set to null', async () => {
-    const user = userEvent.setup()
+    vi.useFakeTimers()
     render(
       <ThemePreviewProvider>
         <TestComponent />
       </ThemePreviewProvider>
     )
 
-    await user.click(screen.getByText('Set Dracula'))
-    await user.click(screen.getByText('Clear'))
+    // Set dracula first
+    await act(async () => {
+      screen.getByText('Set Dracula').click()
+    })
+    await act(async () => { vi.advanceTimersByTime(50) })
+    expect(screen.getByTestId('preview')).toHaveTextContent('dracula')
+
+    // Clear it (null is immediate, no debounce)
+    await act(async () => {
+      screen.getByText('Clear').click()
+    })
     expect(screen.getByTestId('preview')).toHaveTextContent('none')
+    vi.useRealTimers()
   })
 
   it('throws when used outside provider', () => {

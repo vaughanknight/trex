@@ -3,10 +3,10 @@
  */
 
 /** Message types sent from client to server */
-export type ClientMessageType = 'input' | 'resize' | 'create' | 'close' | 'tmux_config'
+export type ClientMessageType = 'input' | 'resize' | 'create' | 'close' | 'tmux_config' | 'list_tmux_sessions' | 'detach'
 
 /** Message types sent from server to client */
-export type ServerMessageType = 'output' | 'error' | 'exit' | 'session_created' | 'tmux_status'
+export type ServerMessageType = 'output' | 'error' | 'exit' | 'session_created' | 'tmux_status' | 'tmux_sessions' | 'cwd_update'
 
 /** Message sent from browser to server */
 export interface ClientMessage {
@@ -16,6 +16,16 @@ export interface ClientMessage {
   cols?: number // For resize messages
   rows?: number // For resize messages
   interval?: number // Polling interval in ms (for tmux_config)
+  tmuxSessionName?: string // Target tmux session for attach (create message)
+  tmuxWindowIndex?: number // Target tmux window (create message)
+  cwd?: string // Initial working directory (create message)
+}
+
+/** tmux session info from backend */
+export interface TmuxSessionInfo {
+  name: string
+  windows: number
+  attached: number
 }
 
 /** Message sent from server to browser */
@@ -27,6 +37,10 @@ export interface ServerMessage {
   error?: string // For error messages
   code?: number // For exit messages
   tmuxUpdates?: Record<string, string> // sessionId → tmux session name (empty = detached)
+  tmuxSessions?: TmuxSessionInfo[] // Full tmux session list (for tmux_sessions type)
+  tmuxSessionName?: string // tmux session name (in session_created response)
+  tmuxWindowIndex?: number // tmux window index (in session_created response)
+  cwd?: string // Current working directory (in session_created/cwd_update)
 }
 
 /** Terminal connection state */

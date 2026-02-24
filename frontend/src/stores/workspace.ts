@@ -1,23 +1,18 @@
 /**
- * Workspace Store — Manages the multi-layout workspace state.
+ * Workspace Store — Manages the unified workspace state.
  *
- * Replaces layout.ts (deleted) and UI store's activeSessionId.
+ * Every workspace item is a layout with a binary tree of 1+ panes.
+ * A single-terminal item is simply a layout with one leaf node.
+ *
  * This store is TRANSIENT — not persisted to localStorage.
  * Workspace is reconstructed from URL on page load.
- *
- * The workspace is an ordered list of items, each either:
- * - A standalone session (single terminal)
- * - A layout (named group of sessions in a split tree)
- *
- * Each layout owns its own split tree and focused pane, enabling
- * multiple simultaneous layouts with independent state.
  *
  * WARNING: Selectors returning arrays/objects (items, getActiveItem, etc.)
  * create new references on every call. Consumers MUST use `useShallow`
  * or `getState()` imperatively. Scalar selectors (activeItemId, items.length)
  * are safe for direct subscription.
  *
- * @see /docs/plans/016-sidebar-url-overhaul/sidebar-url-overhaul-plan.md § Phase 1
+ * @see /docs/plans/022-unified-layout-architecture/unified-layout-architecture-plan.md
  */
 
 import { create, type StoreApi } from 'zustand'
@@ -25,23 +20,24 @@ import type { PaneLayout } from '../types/layout'
 import { useSessionStore } from './sessions'
 import type {
   WorkspaceItem,
-  WorkspaceSessionItem,
-  WorkspaceLayoutItem,
   WorkspaceStore,
 } from '../types/workspace'
 import {
   splitPane as treeSplitPane,
+  splitPaneWith as treeSplitPaneWith,
   closePane as treeClosePane,
   movePane as treeMovePane,
   findPane,
   getAllLeaves,
+  getTerminalLeaves,
 } from '../lib/layoutTree'
 
-/** Replace the sessionId of a leaf pane by paneId (pure, immutable) */
+/** Replace the sessionId of a terminal leaf pane by paneId (pure, immutable) */
 function replaceSession(tree: PaneLayout, paneId: string, newSessionId: string): PaneLayout {
-  if (tree.type === 'leaf') {
+  if (tree.type === 'terminal') {
     return tree.paneId === paneId ? { ...tree, sessionId: newSessionId } : tree
   }
+  if (tree.type === 'preview') return tree
   const newFirst = replaceSession(tree.first, paneId, newSessionId)
   if (newFirst !== tree.first) return { ...tree, first: newFirst }
   const newSecond = replaceSession(tree.second, paneId, newSessionId)
@@ -76,24 +72,12 @@ function updateItem(
   return items.map(item => item.id === itemId ? updater(item) : item)
 }
 
-/** Check if a layout should auto-dissolve (1 pane remaining → standalone session) */
-function maybeAutoDissolve(
-  items: WorkspaceItem[],
-  itemId: string,
-): WorkspaceItem[] {
-  return items.map(item => {
-    if (item.id !== itemId || item.type !== 'layout') return item
-    const tree = item.tree
-    if (tree.type === 'leaf') {
-      // Auto-dissolve: convert layout with 1 pane back to standalone session
-      return {
-        type: 'session' as const,
-        id: item.id,
-        sessionId: tree.sessionId,
-      }
-    }
-    return item
-  })
+/** Get the session name for the first terminal leaf in a tree */
+function getFirstLeafSessionName(tree: PaneLayout): string {
+  const leaves = getTerminalLeaves(tree)
+  if (leaves.length === 0) return 'Terminal'
+  const session = useSessionStore.getState().sessions.get(leaves[0].sessionId)
+  return session?.name ?? leaves[0].sessionId
 }
 
 function createStoreImpl(
@@ -106,16 +90,20 @@ function createStoreImpl(
 
     // ── Item CRUD ──────────────────────────────────────────────────
 
-    addSessionItem: (sessionId) => {
+    addItem: (name, tree, focusedPaneId = null) => {
       const id = crypto.randomUUID()
-      const item: WorkspaceSessionItem = { type: 'session', id, sessionId }
+      const item: WorkspaceItem = { id, name, tree, focusedPaneId, userRenamed: false }
       set(state => ({ items: [...state.items, item] }))
       return id
     },
 
-    addLayoutItem: (name, tree, focusedPaneId = null) => {
+    addSessionItem: (sessionId) => {
+      const paneId = crypto.randomUUID()
+      const tree: PaneLayout = { type: 'terminal', paneId, sessionId }
+      const session = useSessionStore.getState().sessions.get(sessionId)
+      const name = session?.name ?? sessionId
       const id = crypto.randomUUID()
-      const item: WorkspaceLayoutItem = { type: 'layout', id, name, tree, focusedPaneId }
+      const item: WorkspaceItem = { id, name, tree, focusedPaneId: paneId, userRenamed: false }
       set(state => ({ items: [...state.items, item] }))
       return id
     },
@@ -125,7 +113,6 @@ function createStoreImpl(
         const newItems = state.items.filter(i => i.id !== itemId)
         let newActiveItemId = state.activeItemId
         if (state.activeItemId === itemId) {
-          // Auto-select next item (or previous, or null)
           const removedIndex = state.items.findIndex(i => i.id === itemId)
           if (newItems.length === 0) {
             newActiveItemId = null
@@ -165,11 +152,22 @@ function createStoreImpl(
 
     // ── Layout operations ────────────────────────────────────────
 
-    splitPane: (itemId, paneId, direction, newSessionId) => {
+    splitPane: (itemId, paneId, direction, newSessionId, insertBefore) => {
       set(state => ({
         items: updateItem(state.items, itemId, item => {
-          if (item.type !== 'layout') return item
-          const newTree = treeSplitPane(item.tree, paneId, direction, newSessionId)
+          const newTree = treeSplitPane(item.tree, paneId, direction, newSessionId, insertBefore)
+          if (newTree === item.tree) return item
+          // Auto-derive name from first leaf if not user-renamed
+          const name = item.userRenamed ? item.name : getFirstLeafSessionName(newTree)
+          return { ...item, tree: newTree, name }
+        }),
+      }))
+    },
+
+    splitPaneWith: (itemId, paneId, direction, createLeaf, insertBefore) => {
+      set(state => ({
+        items: updateItem(state.items, itemId, item => {
+          const newTree = treeSplitPaneWith(item.tree, paneId, direction, createLeaf, insertBefore)
           if (newTree === item.tree) return item
           return { ...item, tree: newTree }
         }),
@@ -178,43 +176,40 @@ function createStoreImpl(
 
     closePane: (itemId, paneId) => {
       set(state => {
-        let newItems = updateItem(state.items, itemId, item => {
-          if (item.type !== 'layout') return item
-          const newTree = treeClosePane(item.tree, paneId)
-          if (newTree === item.tree) return item
-
-          if (newTree === null) {
-            // Last pane closed — remove the layout entirely
-            // This will be handled by removeItem below
-            return item
-          }
-
-          // Auto-focus sibling if focused pane was closed
-          let newFocusedPaneId = item.focusedPaneId
-          if (item.focusedPaneId === paneId) {
-            const leaves = getAllLeaves(newTree)
-            newFocusedPaneId = leaves[0]?.paneId ?? null
-          }
-
-          return { ...item, tree: newTree, focusedPaneId: newFocusedPaneId }
-        })
-
-        // Check if the layout's tree became null (last pane)
         const originalItem = state.items.find(i => i.id === itemId)
-        if (originalItem?.type === 'layout') {
-          const tree = treeClosePane(originalItem.tree, paneId)
-          if (tree === null) {
-            // Last pane was closed — remove the item
-            newItems = newItems.filter(i => i.id !== itemId)
-            const newActiveItemId = state.activeItemId === itemId
-              ? (newItems.length > 0 ? newItems[0].id : null)
-              : state.activeItemId
-            return { items: newItems, activeItemId: newActiveItemId }
-          }
+        if (!originalItem) return state
+
+        const newTree = treeClosePane(originalItem.tree, paneId)
+
+        // Last pane closed — remove the item entirely
+        if (newTree === null) {
+          const newItems = state.items.filter(i => i.id !== itemId)
+          const newActiveItemId = state.activeItemId === itemId
+            ? (newItems.length > 0 ? newItems[0].id : null)
+            : state.activeItemId
+          return { items: newItems, activeItemId: newActiveItemId }
         }
 
-        // Auto-dissolve check
-        newItems = maybeAutoDissolve(newItems, itemId)
+        // Tree unchanged (paneId not found)
+        if (newTree === originalItem.tree) return state
+
+        // Auto-focus sibling if focused pane was closed
+        let newFocusedPaneId = originalItem.focusedPaneId
+        if (originalItem.focusedPaneId === paneId) {
+          const leaves = getAllLeaves(newTree)
+          newFocusedPaneId = leaves[0]?.paneId ?? null
+        }
+
+        // Update name from first leaf if not user-renamed
+        const name = originalItem.userRenamed ? originalItem.name : getFirstLeafSessionName(newTree)
+
+        const newItems = updateItem(state.items, itemId, () => ({
+          ...originalItem,
+          tree: newTree,
+          focusedPaneId: newFocusedPaneId,
+          name,
+        }))
+
         return { items: newItems }
       })
     },
@@ -222,7 +217,6 @@ function createStoreImpl(
     movePane: (itemId, sourcePaneId, targetPaneId, direction) => {
       set(state => ({
         items: updateItem(state.items, itemId, item => {
-          if (item.type !== 'layout') return item
           const newTree = treeMovePane(item.tree, sourcePaneId, targetPaneId, direction)
           if (newTree === item.tree) return item
           return { ...item, tree: newTree }
@@ -233,7 +227,6 @@ function createStoreImpl(
     setFocusedPane: (itemId, paneId) => {
       set(state => ({
         items: updateItem(state.items, itemId, item => {
-          if (item.type !== 'layout') return item
           return { ...item, focusedPaneId: paneId }
         }),
       }))
@@ -243,7 +236,7 @@ function createStoreImpl(
       const clampedRatio = Math.max(0.1, Math.min(0.9, ratio))
       set(state => ({
         items: updateItem(state.items, itemId, item => {
-          if (item.type !== 'layout' || item.tree.type !== 'split') return item
+          if (item.tree.type !== 'split') return item
           const newTree = setRatioAtPath(item.tree, path, clampedRatio)
           if (newTree === item.tree) return item
           return { ...item, tree: newTree }
@@ -254,10 +247,11 @@ function createStoreImpl(
     detachPane: (itemId, paneId) => {
       const { items } = get()
       const item = items.find(i => i.id === itemId)
-      if (!item || item.type !== 'layout') return null
+      if (!item) return null
 
       const leaf = findPane(item.tree, paneId)
       if (!leaf) return null
+      if (leaf.type !== 'terminal') return null
 
       const sessionId = leaf.sessionId
       const newTree = treeClosePane(item.tree, paneId)
@@ -266,7 +260,7 @@ function createStoreImpl(
         let newItems: WorkspaceItem[]
 
         if (newTree === null) {
-          // Last pane — remove layout entirely
+          // Last pane — remove item entirely
           newItems = state.items.filter(i => i.id !== itemId)
         } else {
           let newFocusedPaneId = item.focusedPaneId
@@ -275,14 +269,16 @@ function createStoreImpl(
             newFocusedPaneId = leaves[0]?.paneId ?? null
           }
 
+          const name = item.userRenamed ? item.name : getFirstLeafSessionName(newTree)
+
           newItems = updateItem(state.items, itemId, () => ({
             ...item,
             tree: newTree,
             focusedPaneId: newFocusedPaneId,
+            name,
           }))
 
-          // Auto-dissolve check
-          newItems = maybeAutoDissolve(newItems, itemId)
+          // No auto-dissolve — 1-pane items stay as-is
         }
 
         return { items: newItems }
@@ -294,7 +290,6 @@ function createStoreImpl(
     replaceSessionInPane: (itemId, paneId, newSessionId) => {
       set(state => ({
         items: updateItem(state.items, itemId, item => {
-          if (item.type !== 'layout') return item
           const newTree = replaceSession(item.tree, paneId, newSessionId)
           if (newTree === item.tree) return item
           return { ...item, tree: newTree }
@@ -302,81 +297,49 @@ function createStoreImpl(
       }))
     },
 
-    // ── Layout lifecycle ─────────────────────────────────────────
+    // ── Item lifecycle ───────────────────────────────────────────
 
-    convertToLayout: (itemId, direction, newSessionId) => {
+    dissolveAll: (itemId) => {
       set(state => {
         const itemIndex = state.items.findIndex(i => i.id === itemId)
         if (itemIndex === -1) return state
 
         const item = state.items[itemIndex]
-        if (item.type !== 'session') return state // Only convert standalone sessions
+        const terminalLeaves = getTerminalLeaves(item.tree)
 
-        const existingPaneId = crypto.randomUUID()
-        const newPaneId = crypto.randomUUID()
+        // Each terminal leaf becomes a 1-pane layout
+        const newItems: WorkspaceItem[] = terminalLeaves.map(leaf => {
+          const paneId = crypto.randomUUID()
+          const session = useSessionStore.getState().sessions.get(leaf.sessionId)
+          return {
+            id: crypto.randomUUID(),
+            name: session?.name ?? leaf.sessionId,
+            tree: { type: 'terminal' as const, paneId, sessionId: leaf.sessionId },
+            focusedPaneId: paneId,
+            userRenamed: false,
+          }
+        })
 
-        const tree: PaneLayout = {
-          type: 'split',
-          direction,
-          ratio: 0.5,
-          first: { type: 'leaf', paneId: existingPaneId, sessionId: item.sessionId },
-          second: { type: 'leaf', paneId: newPaneId, sessionId: newSessionId },
-        }
-
-        // Auto-name layout from the session's display name
-        const session = useSessionStore.getState().sessions.get(item.sessionId)
-        const layoutName = session?.name ?? item.sessionId
-
-        const layoutItem: WorkspaceLayoutItem = {
-          type: 'layout',
-          id: item.id, // Preserve the workspace item ID
-          name: layoutName,
-          tree,
-          focusedPaneId: existingPaneId,
-        }
-
-        const newItems = [...state.items]
-        newItems[itemIndex] = layoutItem
-        return { items: newItems }
-      })
-    },
-
-    dissolveLayout: (itemId) => {
-      set(state => {
-        const itemIndex = state.items.findIndex(i => i.id === itemId)
-        if (itemIndex === -1) return state
-
-        const item = state.items[itemIndex]
-        if (item.type !== 'layout') return state
-
-        const leaves = getAllLeaves(item.tree)
-        const standaloneItems: WorkspaceSessionItem[] = leaves.map(leaf => ({
-          type: 'session',
-          id: crypto.randomUUID(),
-          sessionId: leaf.sessionId,
-        }))
-
-        const newItems = [
+        const allItems = [
           ...state.items.slice(0, itemIndex),
-          ...standaloneItems,
+          ...newItems,
           ...state.items.slice(itemIndex + 1),
         ]
 
-        // If this was the active item, activate the first dissolved session
-        const newActiveItemId = state.activeItemId === itemId && standaloneItems.length > 0
-          ? standaloneItems[0].id
+        const newActiveItemId = state.activeItemId === itemId && newItems.length > 0
+          ? newItems[0].id
           : state.activeItemId
 
-        return { items: newItems, activeItemId: newActiveItemId }
+        return { items: allItems, activeItemId: newActiveItemId }
       })
     },
 
     closeLayout: (itemId) => {
       const { items } = get()
       const item = items.find(i => i.id === itemId)
-      if (!item || item.type !== 'layout') return []
+      if (!item) return []
 
-      const sessionIds = getAllLeaves(item.tree).map(l => l.sessionId)
+      const sessionIds = getTerminalLeaves(item.tree).map(l => l.sessionId)
 
       set(state => {
         const newItems = state.items.filter(i => i.id !== itemId)
@@ -389,11 +352,19 @@ function createStoreImpl(
       return sessionIds
     },
 
-    renameLayout: (itemId, name) => {
+    renameItem: (itemId, name) => {
       set(state => ({
         items: updateItem(state.items, itemId, item => {
-          if (item.type !== 'layout') return item
-          return { ...item, name }
+          return { ...item, name, userRenamed: true }
+        }),
+      }))
+    },
+
+    clearItemName: (itemId) => {
+      set(state => ({
+        items: updateItem(state.items, itemId, item => {
+          const autoName = getFirstLeafSessionName(item.tree)
+          return { ...item, name: autoName, userRenamed: false }
         }),
       }))
     },
@@ -403,8 +374,8 @@ function createStoreImpl(
     getSessionsInLayout: (itemId) => {
       const { items } = get()
       const item = items.find(i => i.id === itemId)
-      if (!item || item.type !== 'layout') return []
-      return getAllLeaves(item.tree).map(l => l.sessionId)
+      if (!item) return []
+      return getTerminalLeaves(item.tree).map(l => l.sessionId)
     },
 
     getActiveSessionId: () => {
@@ -413,23 +384,17 @@ function createStoreImpl(
       const item = items.find(i => i.id === activeItemId)
       if (!item) return null
 
-      if (item.type === 'session') return item.sessionId
-      if (item.type === 'layout') {
-        if (!item.focusedPaneId) return null
-        const leaf = findPane(item.tree, item.focusedPaneId)
-        return leaf?.sessionId ?? null
-      }
-      return null
+      if (!item.focusedPaneId) return null
+      const leaf = findPane(item.tree, item.focusedPaneId)
+      if (!leaf || leaf.type !== 'terminal') return null
+      return leaf.sessionId
     },
 
     findItemBySessionId: (sessionId) => {
       const { items } = get()
       for (const item of items) {
-        if (item.type === 'session' && item.sessionId === sessionId) return item
-        if (item.type === 'layout') {
-          const leaves = getAllLeaves(item.tree)
-          if (leaves.some(l => l.sessionId === sessionId)) return item
-        }
+        const leaves = getTerminalLeaves(item.tree)
+        if (leaves.some(l => l.sessionId === sessionId)) return item
       }
       return undefined
     },
@@ -448,36 +413,15 @@ export function createWorkspaceStore() {
 export const useWorkspaceStore = createWorkspaceStore()
 
 // ── Session Lifecycle Subscription ────────────────────────────────────
-// When a session is removed from the session store, clean up any
-// workspace items that reference it. For standalone session items,
-// remove the item. For layout items, close the pane containing that session.
+// Per C6: when a session exits, the workspace item stays with
+// SessionEndedOverlay. Items are only removed by explicit user action.
+// No auto-removal of workspace items on session exit.
 useSessionStore.subscribe((state, prevState) => {
   if (state.sessions === prevState.sessions) return
-
-  // Find session IDs that were removed
-  const currentIds = new Set(state.sessions.keys())
-  const removedIds: string[] = []
-  for (const id of prevState.sessions.keys()) {
-    if (!currentIds.has(id)) removedIds.push(id)
-  }
-
-  if (removedIds.length === 0) return
-
-  const ws = useWorkspaceStore.getState()
-  for (const sessionId of removedIds) {
-    const item = ws.findItemBySessionId(sessionId)
-    if (!item) continue
-    if (item.type === 'session') {
-      ws.removeItem(item.id)
-    }
-    // For layouts: panes with dead sessions keep their session overlay
-    // (SessionEndedOverlay handles restart/close for individual panes)
-  }
+  // No cleanup needed — panes show SessionEndedOverlay for dead sessions
 })
 
 // ── Selectors ────────────────────────────────────────────────────────
-// Scalar selectors are safe for direct subscription (no new references).
-// Array/object selectors MUST use useShallow or getState().
 
 /** Safe scalar selector: active item ID */
 export const selectActiveItemId = (state: WorkspaceStore) => state.activeItemId
@@ -487,20 +431,16 @@ export const selectItemCount = (state: WorkspaceStore) => state.items.length
 
 /**
  * Derived scalar selector: active session ID.
- * Returns the session ID of the active standalone session, or the focused
- * pane's session ID within the active layout. Returns null if nothing is active.
- * This is scalar (string | null) so safe for direct subscription.
+ * Returns the focused pane's session ID within the active item.
+ * Returns null if nothing is active.
  */
 export const selectActiveSessionId = (state: WorkspaceStore): string | null => {
   const { items, activeItemId } = state
   if (!activeItemId) return null
   const item = items.find(i => i.id === activeItemId)
   if (!item) return null
-  if (item.type === 'session') return item.sessionId
-  if (item.type === 'layout') {
-    if (!item.focusedPaneId) return null
-    const leaf = findPane(item.tree, item.focusedPaneId)
-    return leaf?.sessionId ?? null
-  }
-  return null
+  if (!item.focusedPaneId) return null
+  const leaf = findPane(item.tree, item.focusedPaneId)
+  if (!leaf || leaf.type !== 'terminal') return null
+  return leaf.sessionId
 }

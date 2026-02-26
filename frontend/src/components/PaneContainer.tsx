@@ -17,6 +17,7 @@ import { SessionEndedOverlay } from './SessionEndedOverlay'
 import { DropZoneOverlay } from './DropZoneOverlay'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useSessionStore } from '../stores/sessions'
+import { useSettingsStore } from '../stores/settings'
 import { useCentralWebSocket } from '../hooks/useCentralWebSocket'
 import type { SplitDirection } from '../types/layout'
 
@@ -40,6 +41,7 @@ export function PaneContainer({ itemId, paneId, sessionId, isFocused, showTitleB
   const replaceSessionInPane = useWorkspaceStore((state) => state.replaceSessionInPane)
   const addSession = useSessionStore((state) => state.addSession)
   const { createSession, createTmuxSession } = useCentralWebSocket()
+  const translucentTitleBar = useSettingsStore((s) => s.translucentTitleBar)
 
   // Track session exit state for overlay (DYK-01)
   const [exitCode, setExitCode] = useState<number | null>(null)
@@ -109,9 +111,18 @@ export function PaneContainer({ itemId, paneId, sessionId, isFocused, showTitleB
       ref={containerRef}
       data-pane-id={paneId}
       onClick={handleClick}
-      style={{ width: '100%', height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+      style={{ width: '100%', height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative' }}
     >
-      {showTitleBar && (
+      {showTitleBar && translucentTitleBar && (
+        <PaneTitleBar
+          itemId={itemId}
+          paneId={paneId}
+          sessionId={sessionId}
+          isFocused={isFocused}
+          translucent
+        />
+      )}
+      {showTitleBar && !translucentTitleBar && (
         <PaneTitleBar
           itemId={itemId}
           paneId={paneId}

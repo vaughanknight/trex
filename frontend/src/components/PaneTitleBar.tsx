@@ -15,7 +15,9 @@ import { setCustomNativeDragPreview } from '@atlaskit/pragmatic-drag-and-drop/el
 import { Columns2, Rows2, GripVertical, ArrowUpFromLine, X, Monitor } from 'lucide-react'
 import { useSessionStore } from '../stores/sessions'
 import { useWorkspaceStore } from '../stores/workspace'
+import { useSettingsStore } from '../stores/settings'
 import { useCentralWebSocket } from '../hooks/useCentralWebSocket'
+import { getAllPlugins } from '../plugins/pluginRegistry'
 import { countTerminalPanes } from '../lib/layoutTree'
 
 interface PaneTitleBarProps {
@@ -24,10 +26,13 @@ interface PaneTitleBarProps {
   paneId: string
   sessionId: string
   isFocused: boolean
+  /** Render as translucent overlay with backdrop-blur */
+  translucent?: boolean
 }
 
-export function PaneTitleBar({ itemId, paneId, sessionId, isFocused }: PaneTitleBarProps) {
+export function PaneTitleBar({ itemId, paneId, sessionId, isFocused, translucent }: PaneTitleBarProps) {
   const dragRef = useRef<HTMLDivElement>(null)
+  const [isHovered, setIsHovered] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const sessionName = useSessionStore(
     (state) => state.sessions.get(sessionId)?.name ?? 'Session'
@@ -128,18 +133,31 @@ export function PaneTitleBar({ itemId, paneId, sessionId, isFocused }: PaneTitle
     detachPane(itemId, paneId)
   }, [detachPane, itemId, paneId])
 
+  const titleBarOpacity = useSettingsStore((s) => s.titleBarOpacity)
+  const titleBarHoverOpacity = useSettingsStore((s) => s.titleBarHoverOpacity)
+
   return (
     <div
       ref={dragRef}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       className={`
         flex items-center h-6 px-2 gap-1 text-xs select-none shrink-0
         cursor-grab active:cursor-grabbing
+        transition-opacity duration-200
+        ${translucent
+          ? 'absolute top-0 left-0 right-0 z-30 backdrop-blur-sm'
+          : ''
+        }
         ${isFocused
-          ? 'bg-muted border-b-2 border-primary text-foreground'
-          : 'bg-muted/50 border-b border-border text-muted-foreground'
+          ? `${translucent ? '' : 'bg-muted'} border-b-2 border-primary text-foreground`
+          : `${translucent ? '' : 'bg-muted/50'} border-b border-border text-muted-foreground`
         }
       `}
-      style={{ opacity: isDragging ? 0.4 : 1 }}
+      style={{
+        opacity: isDragging ? 0.4 : translucent ? (isHovered ? titleBarHoverOpacity : titleBarOpacity) : 1,
+        ...(translucent ? { backgroundColor: `color-mix(in srgb, var(--muted) ${Math.round((isHovered ? titleBarHoverOpacity : titleBarOpacity) * 100)}%, transparent)` } : {}),
+      }}
     >
       <GripVertical className="size-3 text-muted-foreground/50 shrink-0" />
       {tmuxSessionName && (
@@ -152,6 +170,13 @@ export function PaneTitleBar({ itemId, paneId, sessionId, isFocused }: PaneTitle
         </span>
       )}
       <span className="truncate flex-1 font-mono">{sessionName}</span>
+      {/* Plugin widget slots */}
+      {getAllPlugins().map(plugin => {
+        const settings = useSettingsStore.getState().pluginSettings[plugin.id]
+        if (settings && !settings.enabled) return null
+        if (settings && !settings.titleBar) return null
+        return <plugin.TitleBarWidget key={plugin.id} sessionId={sessionId} paneId={paneId} />
+      })}
       <button
         onClick={handleSplitH}
         disabled={atCap}

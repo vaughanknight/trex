@@ -64,6 +64,10 @@ const createTestSettingsStore = (storage: FakeStorage) => {
     tmuxClickFocusExisting: true,
     retroBorderEnabled: false,
     retroAutoApply: true,
+    translucentTitleBar: false,
+    titleBarOpacity: 0.3,
+    titleBarHoverOpacity: 0.9,
+    pluginSettings: {},
   }
 
   return create<SettingsState & SettingsActions>()(
@@ -114,6 +118,10 @@ const createTestSettingsStore = (storage: FakeStorage) => {
         setTmuxClickFocusExisting: (tmuxClickFocusExisting: boolean) => set({ tmuxClickFocusExisting }),
         setRetroBorderEnabled: (retroBorderEnabled: boolean) => set({ retroBorderEnabled }),
         setRetroAutoApply: (retroAutoApply: boolean) => set({ retroAutoApply }),
+        setTranslucentTitleBar: (v: boolean) => set({ translucentTitleBar: v }),
+        setTitleBarOpacity: (v: number) => set({ titleBarOpacity: v }),
+        setTitleBarHoverOpacity: (v: number) => set({ titleBarHoverOpacity: v }),
+        setPluginSetting: vi.fn(),
         reset: () => set(defaultSettings),
       }),
       {

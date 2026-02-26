@@ -19,6 +19,7 @@ import type { ClientMessage, ServerMessage, ConnectionState } from '../types/ter
 import { useActivityStore } from '../stores/activityStore'
 import { useSessionStore } from '../stores/sessions'
 import { useTmuxStore } from '../stores/tmux'
+import { getPlugin } from '../plugins/pluginRegistry'
 
 // Session-specific message handlers
 export interface SessionHandlers {
@@ -242,6 +243,15 @@ export function useCentralWebSocket(): UseCentralWebSocketReturn {
         // Handle cwd_update from backend
         if (msg.type === 'cwd_update' && msg.sessionId && msg.cwd) {
           useSessionStore.getState().updateCwd(msg.sessionId, msg.cwd)
+          return
+        }
+
+        // Handle plugin_data from backend collectors
+        if (msg.type === 'plugin_data' && msg.sessionId && msg.pluginId && msg.pluginData !== undefined) {
+          const plugin = getPlugin(msg.pluginId)
+          if (plugin) {
+            plugin.useStore.getState().updateData(msg.sessionId, msg.pluginData)
+          }
           return
         }
 

@@ -14,6 +14,7 @@ import { LayoutIconSettings } from './LayoutIconSettings'
 import { URLSessionSettings } from './URLSessionSettings'
 import { TmuxSettings } from './TmuxSettings'
 import { RetroSettings } from './RetroSettings'
+import { TitleBarSettings } from './TitleBarSettings'
 import { OutputIntervalSlider } from './OutputIntervalSlider'
 import { LinkDetectionSettings } from './LinkDetectionSettings'
 
@@ -26,9 +27,15 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   if (!open) return null
 
   return (
-    <div className="bg-sidebar border-r h-svh w-80 flex-shrink-0 flex flex-col">
+    <>
+      {/* Backdrop for mobile */}
+      <div
+        className="fixed inset-0 bg-black/50 z-[60] md:hidden"
+        onClick={onClose}
+      />
+      <div className="bg-sidebar border-r w-full md:w-80 flex-shrink-0 fixed md:relative z-[60] md:z-auto top-0 left-0 bottom-0 md:top-auto md:left-auto md:bottom-auto md:h-svh overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
       {/* Header with title and X button */}
-      <div className="flex items-center justify-between p-4 border-b">
+      <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-sidebar z-10">
         <div>
           <h2 className="font-semibold text-foreground">Settings</h2>
           <p className="text-sm text-muted-foreground">
@@ -45,7 +52,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
       </div>
 
       {/* Content with settings controls */}
-      <div className="p-4 space-y-6 overflow-y-scroll flex-1">
+      <div className="p-4 space-y-6">
         {/* Theme Selection */}
         <div className="space-y-2">
           <ThemeSelector />
@@ -59,6 +66,11 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         {/* Font Size */}
         <div className="space-y-2">
           <FontSizeSlider />
+        </div>
+
+        {/* Title Bar */}
+        <div className="space-y-2">
+          <TitleBarSettings />
         </div>
 
         {/* Idle Indicators */}
@@ -97,5 +109,6 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         </div>
       </div>
     </div>
+    </>
   )
 }

@@ -23,6 +23,7 @@ import { useWorkspaceStore, selectActiveItemId } from '@/stores/workspace'
 import { useSessionStore } from '@/stores/sessions'
 import { useCentralWebSocket } from '@/hooks/useCentralWebSocket'
 import { getAllLeaves, getTerminalLeaves } from '@/lib/layoutTree'
+import { getAllPlugins } from '@/plugins/pluginRegistry'
 import type { WorkspaceItem } from '@/types/workspace'
 import {
   SidebarMenuItem,
@@ -226,6 +227,25 @@ export function LayoutSidebarItem({ item, index }: LayoutSidebarItemProps) {
         >
           <X className="size-3" />
         </button>
+        {/* Plugin sidebar widgets */}
+        {terminalLeaves.length > 0 && getAllPlugins().length > 0 && (
+          <div className="px-2 py-0.5 flex flex-col gap-0.5">
+            {terminalLeaves.map(leaf => {
+              const plugins = getAllPlugins().filter(p => {
+                const settings = useSettingsStore.getState().pluginSettings[p.id]
+                return (!settings || settings.enabled) && (!settings || settings.sidebar)
+              })
+              if (plugins.length === 0) return null
+              return (
+                <div key={leaf.paneId} className="flex items-center gap-1">
+                  {plugins.map(plugin => (
+                    <plugin.SidebarWidget key={plugin.id} sessionId={leaf.sessionId} paneId={leaf.paneId} />
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+        )}
         {closestEdge && (
           <div
             className={cn(

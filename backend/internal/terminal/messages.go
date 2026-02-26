@@ -1,5 +1,7 @@
 package terminal
 
+import "encoding/json"
+
 // ClientMessage represents messages sent from browser to server.
 type ClientMessage struct {
 	SessionId string `json:"sessionId,omitempty"` // Session ID for multi-session routing
@@ -30,6 +32,10 @@ type ServerMessage struct {
 	TmuxSessionName string `json:"tmuxSessionName,omitempty"` // tmux session name for this session
 	TmuxWindowIndex int    `json:"tmuxWindowIndex,omitempty"` // tmux window index for this session
 	Cwd             string `json:"cwd,omitempty"`             // Current working directory of the session
+
+	// Plugin data (included in plugin_data messages)
+	PluginId   string          `json:"pluginId,omitempty"`   // Plugin identifier
+	PluginData json.RawMessage `json:"pluginData,omitempty"` // Plugin-specific JSON payload
 }
 
 // Message type constants
@@ -52,4 +58,5 @@ const (
 	MsgTypeListTmuxSessions = "list_tmux_sessions" // Client requests current tmux session list
 	MsgTypeDetach           = "detach"             // Client requests tmux detach (PTY closed, tmux session survives)
 	MsgTypeCwdUpdate        = "cwd_update"         // Server sends updated cwd for a session
+	MsgTypePluginData       = "plugin_data"        // Server sends plugin-specific data for a session
 )

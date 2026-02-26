@@ -6,7 +6,7 @@
 export type ClientMessageType = 'input' | 'resize' | 'create' | 'close' | 'tmux_config' | 'list_tmux_sessions' | 'detach'
 
 /** Message types sent from server to client */
-export type ServerMessageType = 'output' | 'error' | 'exit' | 'session_created' | 'tmux_status' | 'tmux_sessions' | 'cwd_update'
+export type ServerMessageType = 'output' | 'error' | 'exit' | 'session_created' | 'tmux_status' | 'tmux_sessions' | 'cwd_update' | 'plugin_data'
 
 /** Message sent from browser to server */
 export interface ClientMessage {
@@ -41,6 +41,8 @@ export interface ServerMessage {
   tmuxSessionName?: string // tmux session name (in session_created response)
   tmuxWindowIndex?: number // tmux window index (in session_created response)
   cwd?: string // Current working directory (in session_created/cwd_update)
+  pluginId?: string // Plugin identifier (in plugin_data)
+  pluginData?: unknown // Plugin-specific JSON payload (in plugin_data)
 }
 
 /** Terminal connection state */

@@ -7,8 +7,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -62,8 +65,10 @@ type connectionHandler struct {
 	mu            sync.Mutex                          // protects sessions and pendingStarts maps
 	writeMu       sync.Mutex                          // protects WebSocket writes
 	authUser      *auth.GitHubUser                   // authenticated user (nil when auth disabled)
-	cwdDetector   terminal.CwdDetector               // detects session working directories
-	cwdCancel     context.CancelFunc                 // cancels cwd polling goroutine
+	cwdDetector       terminal.CwdDetector               // detects session working directories
+	processDetector   terminal.ProcessDetector           // detects child process names
+	collectorRegistry *terminal.CollectorRegistry        // registered data collectors
+	cwdCancel         context.CancelFunc                 // cancels cwd polling goroutine
 }
 
 // newConnectionHandler creates a handler for a WebSocket connection.
@@ -75,7 +80,9 @@ func newConnectionHandler(conn *websocket.Conn, registry *terminal.SessionRegist
 		server:        server,
 		sessions:      make(map[string]*terminal.Session),
 		pendingStarts: make(map[string]*pendingShellStart),
-		cwdDetector:   terminal.NewCwdDetector(),
+		cwdDetector:       terminal.NewCwdDetector(),
+		processDetector:   terminal.NewProcessDetector(),
+		collectorRegistry: server.collectors,
 		cwdCancel:     cancel,
 	}
 	go h.pollCwd(ctx)
@@ -479,6 +486,7 @@ func (h *connectionHandler) cleanup() {
 func (h *connectionHandler) pollCwd(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
+	pluginDataCache := make(map[string]string) // "sessionId:pluginId" → JSON string
 
 	for {
 		select {
@@ -499,6 +507,8 @@ func (h *connectionHandler) pollCwd(ctx context.Context) {
 				if pid <= 0 {
 					continue
 				}
+
+				// Detect cwd
 				cwd := h.cwdDetector.DetectCwd(pid)
 				if cwd != "" && cwd != session.Cwd {
 					session.Cwd = cwd
@@ -509,9 +519,70 @@ func (h *connectionHandler) pollCwd(ctx context.Context) {
 					}
 					h.sendJSON(msg)
 				}
+
+				// Detect process tree and invoke matching collectors
+				processes := h.processDetector.DetectProcessTree(pid)
+				// For tmux sessions, the PTY's child is the tmux client which
+				// has no children. We need to find processes inside the tmux session.
+				if session.TmuxSessionName != "" {
+					tmuxProcesses := h.detectTmuxSessionProcesses(session.TmuxSessionName)
+					processes = append(processes, tmuxProcesses...)
+				}
+				log.Printf("[plugin] session %s (pid %d, tmux=%q): processes=%v, registry=%d collectors",
+					session.ID, pid, session.TmuxSessionName, processes, h.collectorRegistry.Count())
+				if len(processes) == 0 {
+					continue
+				}
+				collectors := h.collectorRegistry.FindMatching(processes)
+				log.Printf("[plugin] session %s: %d matching collectors", session.ID, len(collectors))
+				for _, collector := range collectors {
+					data, err := collector.Collect()
+					if err != nil {
+						log.Printf("Collector %s error for session %s: %v", collector.ID(), session.ID, err)
+						continue
+					}
+					if data == nil {
+						continue
+					}
+
+					// Only send if data changed (cache check)
+					cacheKey := session.ID + ":" + collector.ID()
+					dataStr := string(data)
+					if pluginDataCache[cacheKey] == dataStr {
+						continue
+					}
+					pluginDataCache[cacheKey] = dataStr
+
+					msg := terminal.ServerMessage{
+						SessionId:  session.ID,
+						Type:       terminal.MsgTypePluginData,
+						PluginId:   collector.ID(),
+						PluginData: data,
+					}
+					h.sendJSON(msg)
+				}
 			}
 		}
 	}
+}
+
+// detectTmuxSessionProcesses finds process names running inside a tmux session.
+// Uses `tmux list-panes -t <session>` to get pane PIDs, then walks each tree.
+func (h *connectionHandler) detectTmuxSessionProcesses(tmuxSession string) []string {
+	out, err := exec.Command("tmux", "list-panes", "-t", tmuxSession, "-F", "#{pane_pid}").Output()
+	if err != nil {
+		return nil
+	}
+	var allProcesses []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		pid, err := strconv.Atoi(strings.TrimSpace(line))
+		if err != nil || pid <= 0 {
+			continue
+		}
+		processes := h.processDetector.DetectProcessTree(pid)
+		allProcesses = append(allProcesses, processes...)
+	}
+	return allProcesses
 }
 
 // WriteMessage implements the terminal.Conn interface for sending messages.

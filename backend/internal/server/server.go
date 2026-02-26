@@ -8,6 +8,7 @@ import (
 
 	"github.com/vaughanknight/trex/internal/auth"
 	"github.com/vaughanknight/trex/internal/config"
+	"github.com/vaughanknight/trex/internal/plugins/copilot"
 	"github.com/vaughanknight/trex/internal/static"
 	"github.com/vaughanknight/trex/internal/terminal"
 )
@@ -22,22 +23,28 @@ type Server struct {
 
 	// tmux monitor for detecting tmux session attachments
 	monitor *terminal.TmuxMonitor
-	ctx     context.Context
-	cancel  context.CancelFunc
+	// Plugin data collectors
+	collectors *terminal.CollectorRegistry
+	ctx        context.Context
+	cancel     context.CancelFunc
 }
 
 // New creates a new server instance
 func New(version string, cfg *config.Config) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Server{
-		mux:      http.NewServeMux(),
-		version:  version,
-		registry: terminal.NewSessionRegistry(),
-		config:   cfg,
-		ctx:      ctx,
-		cancel:   cancel,
+		mux:        http.NewServeMux(),
+		version:    version,
+		registry:   terminal.NewSessionRegistry(),
+		collectors: terminal.NewCollectorRegistry(),
+		config:     cfg,
+		ctx:        ctx,
+		cancel:     cancel,
 	}
 	s.routes()
+
+	// Register plugin data collectors
+	s.collectors.Register(copilot.NewCollector())
 
 	// Wrap mux with auth middleware
 	jwtService := auth.NewJWTService(cfg.JWTSecret)

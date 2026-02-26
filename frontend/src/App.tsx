@@ -1,5 +1,5 @@
 import './App.css'
-import { SidebarProvider, SidebarInset } from './components/ui/sidebar'
+import { SidebarProvider, SidebarInset, SidebarTrigger } from './components/ui/sidebar'
 import { SessionSidebar } from './components/SessionSidebar'
 import { SettingsPanel } from './components/SettingsPanel'
 import { EmptyState } from './components/EmptyState'
@@ -85,6 +85,7 @@ function App() {
         <SessionSidebar />
         <SettingsPanel open={settingsPanelOpen} onClose={closeSettings} />
         <SidebarInset className="app">
+          <SidebarTrigger className="absolute top-2 left-2 z-40 md:hidden" />
           {showEmptyState ? (
             <EmptyState />
           ) : activeItem ? (

@@ -101,6 +101,14 @@ export interface SettingsState {
   retroBorderEnabled: boolean
   /** Auto-apply retro font and border when a retro theme is selected */
   retroAutoApply: boolean
+  /** Enable translucent title bar (overlays terminal content) */
+  translucentTitleBar: boolean
+  /** Title bar opacity at rest (0-1) */
+  titleBarOpacity: number
+  /** Title bar opacity on hover (0-1) */
+  titleBarHoverOpacity: number
+  /** Per-plugin settings (enabled, per-surface toggles) */
+  pluginSettings: Record<string, { enabled: boolean; titleBar: boolean; sidebar: boolean; panel: boolean }>
 }
 
 export interface SettingsActions {
@@ -156,6 +164,14 @@ export interface SettingsActions {
   setRetroBorderEnabled: (enabled: boolean) => void
   /** Toggle retro auto-apply (font + border on theme select) */
   setRetroAutoApply: (enabled: boolean) => void
+  /** Toggle translucent title bar */
+  setTranslucentTitleBar: (enabled: boolean) => void
+  /** Set title bar opacity at rest (clamped 0.05-1) */
+  setTitleBarOpacity: (opacity: number) => void
+  /** Set title bar opacity on hover (clamped 0.1-1) */
+  setTitleBarHoverOpacity: (opacity: number) => void
+  /** Update plugin settings */
+  setPluginSetting: (pluginId: string, key: keyof { enabled: boolean; titleBar: boolean; sidebar: boolean; panel: boolean }, value: boolean) => void
   reset: () => void
 }
 
@@ -187,6 +203,10 @@ const defaultSettings: SettingsState = {
   tmuxClickFocusExisting: true,
   retroBorderEnabled: false,
   retroAutoApply: true,
+  translucentTitleBar: false,
+  titleBarOpacity: 0.3,
+  titleBarHoverOpacity: 0.9,
+  pluginSettings: {},
 }
 
 /** Minimum threshold value in milliseconds (1 second) */
@@ -315,6 +335,22 @@ export const useSettingsStore = create<SettingsStore>()(
 
       setRetroAutoApply: (retroAutoApply) => set({ retroAutoApply }),
 
+      setTranslucentTitleBar: (translucentTitleBar) => set({ translucentTitleBar }),
+
+      setTitleBarOpacity: (opacity) => set({ titleBarOpacity: Math.max(0.05, Math.min(1, opacity)) }),
+
+      setTitleBarHoverOpacity: (opacity) => set({ titleBarHoverOpacity: Math.max(0.1, Math.min(1, opacity)) }),
+
+      setPluginSetting: (pluginId, key, value) => set((state) => ({
+        pluginSettings: {
+          ...state.pluginSettings,
+          [pluginId]: {
+            ...(state.pluginSettings[pluginId] ?? { enabled: true, titleBar: true, sidebar: true, panel: true }),
+            [key]: value,
+          },
+        },
+      })),
+
       reset: () => set(defaultSettings),
     }),
     {
@@ -367,6 +403,15 @@ export const useSettingsStore = create<SettingsStore>()(
             (p as Partial<SettingsState>)?.retroBorderEnabled ?? defaultSettings.retroBorderEnabled,
           retroAutoApply:
             (p as Partial<SettingsState>)?.retroAutoApply ?? defaultSettings.retroAutoApply,
+          // Plan 024: Translucent title bar settings
+          translucentTitleBar:
+            (p as Partial<SettingsState>)?.translucentTitleBar ?? defaultSettings.translucentTitleBar,
+          titleBarOpacity:
+            (p as Partial<SettingsState>)?.titleBarOpacity ?? defaultSettings.titleBarOpacity,
+          titleBarHoverOpacity:
+            (p as Partial<SettingsState>)?.titleBarHoverOpacity ?? defaultSettings.titleBarHoverOpacity,
+          pluginSettings:
+            (p as Partial<SettingsState>)?.pluginSettings ?? defaultSettings.pluginSettings,
         }
       },
     }
@@ -399,6 +444,10 @@ export const selectTmuxSocketPath = (state: SettingsStore) => state.tmuxSocketPa
 export const selectTmuxClickFocusExisting = (state: SettingsStore) => state.tmuxClickFocusExisting
 export const selectRetroBorderEnabled = (state: SettingsStore) => state.retroBorderEnabled
 export const selectRetroAutoApply = (state: SettingsStore) => state.retroAutoApply
+export const selectTranslucentTitleBar = (state: SettingsStore) => state.translucentTitleBar
+export const selectTitleBarOpacity = (state: SettingsStore) => state.titleBarOpacity
+export const selectTitleBarHoverOpacity = (state: SettingsStore) => state.titleBarHoverOpacity
+export const selectPluginSettings = (state: SettingsStore) => state.pluginSettings
 
 // Re-export IdleThresholds type for consumers
 export type { IdleThresholds }

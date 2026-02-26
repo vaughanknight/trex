@@ -96,8 +96,8 @@ describe('TAD Scratch: Font selector groups', () => {
     // Should show Bundled Fonts label
     expect(screen.getByText('Bundled Fonts')).toBeInTheDocument()
 
-    // Should show all 6 bundled fonts
-    expect(BUNDLED_FONTS).toHaveLength(6)
+    // Should show all 8 bundled fonts
+    expect(BUNDLED_FONTS).toHaveLength(9)
     for (const font of BUNDLED_FONTS) {
       expect(screen.getByText(font.name)).toBeInTheDocument()
     }

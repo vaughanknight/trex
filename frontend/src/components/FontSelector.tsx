@@ -30,6 +30,7 @@ import '@fontsource/source-code-pro/400.css'
 import '@fontsource/ibm-plex-mono/400.css'
 import '@fontsource-variable/cascadia-code/index.css'
 import '@fontsource/ubuntu-mono/400.css'
+import '@fontsource/press-start-2p/400.css'
 
 export function FontSelector() {
   const fontFamily = useSettingsStore(selectFontFamily)

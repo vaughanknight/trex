@@ -8,6 +8,7 @@ import { LoginPage } from './components/LoginPage'
 import { ThemePreviewProvider } from './contexts/ThemePreviewContext'
 import { useSessionStore, selectSessionCount } from './stores/sessions'
 import { useUIStore, selectSidebarCollapsed, selectSettingsPanelOpen } from './stores/ui'
+import { useSettingsStore, selectRetroBorderEnabled, selectTheme as selectSettingsTheme } from './stores/settings'
 import { useWorkspaceStore, selectActiveItemId } from './stores/workspace'
 import { useAuthStore, selectAuthEnabled, selectUser, selectAuthLoading } from './stores/auth'
 import { useURLSync } from './hooks/useURLSync'
@@ -44,6 +45,10 @@ function App() {
       ? state.items.find(i => i.id === state.activeItemId)
       : undefined
   )
+
+  // Retro mode
+  const retroBorderEnabled = useSettingsStore(selectRetroBorderEnabled)
+  const currentTheme = useSettingsStore(selectSettingsTheme)
 
   const { showConfirmDialog, pendingSessionCount, onConfirm, onCancel, onDisablePrompt } = useURLSync()
   useAuthInit()
@@ -83,12 +88,24 @@ function App() {
           {showEmptyState ? (
             <EmptyState />
           ) : activeItem ? (
-            <PaneLayout
-              itemId={activeItem.id}
-              layout={activeItem.tree}
-              focusedPaneId={activeItem.focusedPaneId}
-              showTitleBar={true}
-            />
+            <div
+              className="flex-1 min-h-0 flex"
+              style={retroBorderEnabled ? {
+                padding: '48px',
+                backgroundColor: currentTheme === 'commodore-64' ? '#6C5EB5'
+                  : currentTheme === 'apple-iie' ? '#33FF33'
+                  : 'var(--foreground)',
+              } : undefined}
+            >
+              <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+                <PaneLayout
+                  itemId={activeItem.id}
+                  layout={activeItem.tree}
+                  focusedPaneId={activeItem.focusedPaneId}
+                  showTitleBar={true}
+                />
+              </div>
+            </div>
           ) : null}
         </SidebarInset>
       </SidebarProvider>

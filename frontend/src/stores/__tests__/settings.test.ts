@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { FakeStorage } from '@/test/fakeStorage'
-import type { SettingsState, SettingsActions, TerminalTheme, IdleThresholds } from '../settings'
+import type { SettingsState, SettingsActions, TerminalTheme, IdleThresholds, LayoutIconStyle } from '../settings'
 import { DEFAULT_THRESHOLDS } from '@/utils/idleState'
 
 /** Minimum threshold value in milliseconds (1 second) - matches settings.ts */
@@ -49,6 +49,21 @@ const createTestSettingsStore = (storage: FakeStorage) => {
     urlConfirmThreshold: 5,
     tmuxPollingInterval: 2000,
     unfocusedOutputInterval: 50,
+    linksEnabled: true,
+    linkActivation: 'modifier-click',
+    linkCustomPatterns: [],
+    layoutIconsEnabled: true,
+    layoutIconSize: 24,
+    layoutIconStyle: 'lines' as LayoutIconStyle,
+    layoutIconShowActivePane: true,
+    layoutIconShowActivityColors: true,
+    layoutIconShowAnimations: true,
+    layoutIconShowOpacity: true,
+    tmuxSidebarEnabled: true,
+    tmuxSocketPath: '',
+    tmuxClickFocusExisting: true,
+    retroBorderEnabled: false,
+    retroAutoApply: true,
   }
 
   return create<SettingsState & SettingsActions>()(
@@ -73,19 +88,59 @@ const createTestSettingsStore = (storage: FakeStorage) => {
         setUnfocusedOutputInterval: (interval: number) => set({
           unfocusedOutputInterval: Math.max(50, Math.min(1000, interval)),
         }),
+        setLinksEnabled: (linksEnabled: boolean) => set({ linksEnabled }),
+        setLinkActivation: (linkActivation: 'modifier-click' | 'single-click') => set({ linkActivation }),
+        setLinkCustomPatterns: (linkCustomPatterns) => set({ linkCustomPatterns }),
+        addLinkCustomPattern: (pattern) => set((state) => ({
+          linkCustomPatterns: [...state.linkCustomPatterns, pattern],
+        })),
+        removeLinkCustomPattern: (index: number) => set((state) => ({
+          linkCustomPatterns: state.linkCustomPatterns.filter((_, i) => i !== index),
+        })),
+        updateLinkCustomPattern: (index: number, pattern) => set((state) => ({
+          linkCustomPatterns: state.linkCustomPatterns.map((p, i) => i === index ? pattern : p),
+        })),
+        setLayoutIconsEnabled: (layoutIconsEnabled: boolean) => set({ layoutIconsEnabled }),
+        setLayoutIconSize: (size: number) => set({
+          layoutIconSize: [16, 20, 24, 28, 32].includes(size) ? size : 24,
+        }),
+        setLayoutIconStyle: (layoutIconStyle: LayoutIconStyle) => set({ layoutIconStyle }),
+        setLayoutIconShowActivePane: (layoutIconShowActivePane: boolean) => set({ layoutIconShowActivePane }),
+        setLayoutIconShowActivityColors: (layoutIconShowActivityColors: boolean) => set({ layoutIconShowActivityColors }),
+        setLayoutIconShowAnimations: (layoutIconShowAnimations: boolean) => set({ layoutIconShowAnimations }),
+        setLayoutIconShowOpacity: (layoutIconShowOpacity: boolean) => set({ layoutIconShowOpacity }),
+        setTmuxSidebarEnabled: (tmuxSidebarEnabled: boolean) => set({ tmuxSidebarEnabled }),
+        setTmuxSocketPath: (tmuxSocketPath: string) => set({ tmuxSocketPath }),
+        setTmuxClickFocusExisting: (tmuxClickFocusExisting: boolean) => set({ tmuxClickFocusExisting }),
+        setRetroBorderEnabled: (retroBorderEnabled: boolean) => set({ retroBorderEnabled }),
+        setRetroAutoApply: (retroAutoApply: boolean) => set({ retroAutoApply }),
         reset: () => set(defaultSettings),
       }),
       {
         name: 'trex-settings',
         storage: createJSONStorage(() => storage),
-        merge: (persisted, current) => ({
-          ...current,
-          ...(persisted as Partial<SettingsState>),
-          idleThresholds: {
-            ...DEFAULT_THRESHOLDS,
-            ...((persisted as Partial<SettingsState>)?.idleThresholds ?? {}),
-          },
-        }),
+        merge: (persisted, current) => {
+          const p = persisted as Partial<SettingsState> | undefined
+          return {
+            ...current,
+            ...(p as Partial<SettingsState>),
+            idleThresholds: {
+              ...DEFAULT_THRESHOLDS,
+              ...(p?.idleThresholds ?? {}),
+            },
+            linkCustomPatterns: p?.linkCustomPatterns ?? [],
+            layoutIconsEnabled: p?.layoutIconsEnabled ?? defaultSettings.layoutIconsEnabled,
+            layoutIconSize: p?.layoutIconSize ?? defaultSettings.layoutIconSize,
+            layoutIconStyle:
+              (['lines', 'gaps', 'rounded'] as const).includes(p?.layoutIconStyle as LayoutIconStyle)
+                ? p!.layoutIconStyle!
+                : defaultSettings.layoutIconStyle,
+            layoutIconShowActivePane: p?.layoutIconShowActivePane ?? defaultSettings.layoutIconShowActivePane,
+            layoutIconShowActivityColors: p?.layoutIconShowActivityColors ?? defaultSettings.layoutIconShowActivityColors,
+            layoutIconShowAnimations: p?.layoutIconShowAnimations ?? defaultSettings.layoutIconShowAnimations,
+            layoutIconShowOpacity: p?.layoutIconShowOpacity ?? defaultSettings.layoutIconShowOpacity,
+          }
+        },
       }
     )
   )
@@ -386,6 +441,117 @@ describe('useSettingsStore', () => {
     const thresholds = useSettings.getState().idleThresholds
     expect(thresholds.active).toBe(DEFAULT_THRESHOLDS.active)
     expect(thresholds.recent).toBe(DEFAULT_THRESHOLDS.recent)
+  })
+
+  // ============================================================
+  // Plan 019: Layout Icon Settings Tests
+  // ============================================================
+
+  /**
+   * Test: Should default layout icon settings correctly
+   *
+   * Behavior: All 7 layout icon fields initialize to plan-specified defaults
+   * Fixture: Fresh store with no persisted data
+   * Assertion: All defaults match plan spec
+   *
+   * Validates: Plan 019 T003 defaults
+   */
+  it('should default layout icon settings correctly', () => {
+    const useSettings = createTestSettingsStore(storage)
+    const s = useSettings.getState()
+
+    expect(s.layoutIconsEnabled).toBe(true)
+    expect(s.layoutIconSize).toBe(24)
+    expect(s.layoutIconStyle).toBe('lines')
+    expect(s.layoutIconShowActivePane).toBe(true)
+    expect(s.layoutIconShowActivityColors).toBe(true)
+    expect(s.layoutIconShowAnimations).toBe(true)
+    expect(s.layoutIconShowOpacity).toBe(true)
+  })
+
+  /**
+   * Test: Should merge layout icon defaults when rehydrating pre-019 storage
+   *
+   * Behavior: Old storage without layout icon fields gets defaults from merge
+   * Fixture: Pre-019 storage with only theme and fontSize
+   * Assertion: Old fields preserved, layout icon fields get defaults
+   *
+   * Validates: Plan 019 T004 backwards compatibility
+   */
+  it('should merge layout icon defaults when rehydrating pre-019 storage', async () => {
+    storage.setItem(
+      'trex-settings',
+      JSON.stringify({
+        state: {
+          theme: 'nord',
+          fontSize: 18,
+          fontFamily: 'JetBrains Mono',
+          autoOpenTerminal: false,
+        },
+        version: 0,
+      })
+    )
+
+    const useSettings = createTestSettingsStore(storage)
+    await new Promise((r) => setTimeout(r, 0))
+
+    // Old values preserved
+    expect(useSettings.getState().theme).toBe('nord')
+    expect(useSettings.getState().fontSize).toBe(18)
+
+    // Layout icon fields get defaults
+    expect(useSettings.getState().layoutIconsEnabled).toBe(true)
+    expect(useSettings.getState().layoutIconSize).toBe(24)
+    expect(useSettings.getState().layoutIconStyle).toBe('lines')
+    expect(useSettings.getState().layoutIconShowActivePane).toBe(true)
+    expect(useSettings.getState().layoutIconShowActivityColors).toBe(true)
+    expect(useSettings.getState().layoutIconShowAnimations).toBe(true)
+    expect(useSettings.getState().layoutIconShowOpacity).toBe(true)
+  })
+
+  /**
+   * Test: Should fall back to default for invalid layoutIconStyle enum
+   *
+   * Behavior: Invalid persisted enum value falls back to 'lines'
+   * Fixture: Storage with layoutIconStyle set to an invalid string
+   * Assertion: layoutIconStyle is 'lines' (default) after hydration
+   *
+   * Validates: Plan 019 T004 enum validation in merge
+   */
+  it('should fall back to default for invalid layoutIconStyle enum', async () => {
+    storage.setItem(
+      'trex-settings',
+      JSON.stringify({
+        state: {
+          theme: 'default-dark',
+          fontSize: 14,
+          layoutIconStyle: 'invalid-style',
+        },
+        version: 0,
+      })
+    )
+
+    const useSettings = createTestSettingsStore(storage)
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(useSettings.getState().layoutIconStyle).toBe('lines')
+  })
+
+  /**
+   * Test: Should clamp invalid layoutIconSize to default
+   *
+   * Behavior: setLayoutIconSize rejects values not in [16,20,24,28,32]
+   * Fixture: Set size to 22 (not in allowed list)
+   * Assertion: Size falls back to 24
+   */
+  it('should clamp invalid layoutIconSize to default', () => {
+    const useSettings = createTestSettingsStore(storage)
+
+    useSettings.getState().setLayoutIconSize(22)
+    expect(useSettings.getState().layoutIconSize).toBe(24)
+
+    useSettings.getState().setLayoutIconSize(32)
+    expect(useSettings.getState().layoutIconSize).toBe(32)
   })
 
 })

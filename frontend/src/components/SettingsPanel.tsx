@@ -10,9 +10,12 @@ import { ThemeSelector } from './ThemeSelector'
 import { FontSelector } from './FontSelector'
 import { FontSizeSlider } from './FontSizeSlider'
 import { IdleThresholdSettings } from './IdleThresholdSettings'
+import { LayoutIconSettings } from './LayoutIconSettings'
 import { URLSessionSettings } from './URLSessionSettings'
 import { TmuxSettings } from './TmuxSettings'
+import { RetroSettings } from './RetroSettings'
 import { OutputIntervalSlider } from './OutputIntervalSlider'
+import { LinkDetectionSettings } from './LinkDetectionSettings'
 
 interface SettingsPanelProps {
   open: boolean
@@ -42,7 +45,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
       </div>
 
       {/* Content with settings controls */}
-      <div className="p-4 space-y-6 overflow-auto flex-1">
+      <div className="p-4 space-y-6 overflow-y-scroll flex-1">
         {/* Theme Selection */}
         <div className="space-y-2">
           <ThemeSelector />
@@ -63,6 +66,11 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           <IdleThresholdSettings />
         </div>
 
+        {/* Layout Icons */}
+        <div className="space-y-2">
+          <LayoutIconSettings />
+        </div>
+
         {/* URL Sessions */}
         <div className="space-y-2">
           <URLSessionSettings />
@@ -73,9 +81,19 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           <OutputIntervalSlider />
         </div>
 
+        {/* Link Detection */}
+        <div className="space-y-2">
+          <LinkDetectionSettings />
+        </div>
+
         {/* tmux Detection */}
         <div className="space-y-2">
           <TmuxSettings />
+        </div>
+
+        {/* Theme Bundles */}
+        <div className="space-y-2">
+          <RetroSettings />
         </div>
       </div>
     </div>

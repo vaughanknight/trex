@@ -329,10 +329,93 @@ export const tokyoNight: ITheme = {
   brightWhite: '#c0caf5',
 }
 
+// Commodore 64 — Authentic VIC-II palette
+// Classic blue screen with light blue text, matching the C64 boot screen
+export const commodore64: ITheme = {
+  background: '#352879',
+  foreground: '#6C5EB5',
+  cursor: '#6C5EB5',
+  cursorAccent: '#352879',
+  selectionBackground: '#6F3D9580',
+  selectionForeground: '#FFFFFF',
+  black: '#000000',
+  red: '#68372B',
+  green: '#588D43',
+  yellow: '#B8C76F',
+  blue: '#352879',
+  magenta: '#6F3D95',
+  cyan: '#70A4B2',
+  white: '#6C6C6C',
+  brightBlack: '#444444',
+  brightRed: '#9A6759',
+  brightGreen: '#9AD284',
+  brightYellow: '#6F4F25',
+  brightBlue: '#6C5EB5',
+  brightMagenta: '#6F3D95',
+  brightCyan: '#70A4B2',
+  brightWhite: '#959595',
+}
+
+// Apple IIe — Green phosphor monochrome monitor (P31 phosphor)
+// Classic green-on-black terminal look
+export const appleIIe: ITheme = {
+  background: '#000000',
+  foreground: '#33FF33',
+  cursor: '#33FF33',
+  cursorAccent: '#000000',
+  selectionBackground: '#33FF3340',
+  selectionForeground: '#FFFFFF',
+  black: '#000000',
+  red: '#1A8C1A',
+  green: '#33FF33',
+  yellow: '#66FF66',
+  blue: '#0A660A',
+  magenta: '#1A8C1A',
+  cyan: '#33CC33',
+  white: '#33FF33',
+  brightBlack: '#0A3A0A',
+  brightRed: '#33CC33',
+  brightGreen: '#66FF66',
+  brightYellow: '#99FF99',
+  brightBlue: '#1A8C1A',
+  brightMagenta: '#33CC33',
+  brightCyan: '#66FF66',
+  brightWhite: '#CCFFCC',
+}
+
+// Street Fighter II — Arcade fighting game palette
+// Dark background with bold gold text and red/blue player accents
+export const streetFighter: ITheme = {
+  background: '#0A0A1A',
+  foreground: '#FFD700',
+  cursor: '#FFD700',
+  cursorAccent: '#0A0A1A',
+  selectionBackground: '#FFD70040',
+  selectionForeground: '#FFFFFF',
+  black: '#0A0A1A',
+  red: '#E70000',
+  green: '#33CC33',
+  yellow: '#FFD700',
+  blue: '#3366FF',
+  magenta: '#CC33CC',
+  cyan: '#86DFD8',
+  white: '#CCCCCC',
+  brightBlack: '#555555',
+  brightRed: '#FF4444',
+  brightGreen: '#66FF66',
+  brightYellow: '#FFEE88',
+  brightBlue: '#6699FF',
+  brightMagenta: '#FF66FF',
+  brightCyan: '#99FFFF',
+  brightWhite: '#FFFFFF',
+}
+
 // Theme registry for UI selection
 export const themes: ThemeInfo[] = [
   { id: 'default-dark', name: 'Default Dark', theme: defaultDark, isDark: true },
   { id: 'default-light', name: 'Default Light', theme: defaultLight, isDark: false },
+  { id: 'apple-iie', name: 'Apple IIe', theme: appleIIe, isDark: true },
+  { id: 'commodore-64', name: 'Commodore 64', theme: commodore64, isDark: true },
   { id: 'dracula', name: 'Dracula', theme: dracula, isDark: true },
   { id: 'nord', name: 'Nord', theme: nord, isDark: true },
   { id: 'solarized-dark', name: 'Solarized Dark', theme: solarizedDark, isDark: true },
@@ -342,6 +425,7 @@ export const themes: ThemeInfo[] = [
   { id: 'gruvbox-light', name: 'Gruvbox Light', theme: gruvboxLight, isDark: false },
   { id: 'one-dark', name: 'One Dark', theme: oneDark, isDark: true },
   { id: 'one-light', name: 'One Light', theme: oneLight, isDark: false },
+  { id: 'street-fighter', name: 'Street Fighter II', theme: streetFighter, isDark: true },
   { id: 'tokyo-night', name: 'Tokyo Night', theme: tokyoNight, isDark: true },
 ]
 

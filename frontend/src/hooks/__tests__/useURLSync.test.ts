@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest'
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { FakeStorage } from '@/test/fakeStorage'
-import type { SettingsState, SettingsActions, TerminalTheme } from '@/stores/settings'
+import type { SettingsState, SettingsActions, TerminalTheme, LayoutIconStyle } from '@/stores/settings'
 import type { IdleThresholds } from '@/utils/idleState'
 import { DEFAULT_THRESHOLDS } from '@/utils/idleState'
 
@@ -57,6 +57,21 @@ function createURLSyncTestEnv(options?: {
     urlConfirmThreshold: 5,
     tmuxPollingInterval: 2000,
     unfocusedOutputInterval: 50,
+    linksEnabled: true,
+    linkActivation: 'modifier-click',
+    linkCustomPatterns: [],
+    layoutIconsEnabled: true,
+    layoutIconSize: 24,
+    layoutIconStyle: 'lines' as LayoutIconStyle,
+    layoutIconShowActivePane: true,
+    layoutIconShowActivityColors: true,
+    layoutIconShowAnimations: true,
+    layoutIconShowOpacity: true,
+    tmuxSidebarEnabled: true,
+    tmuxSocketPath: '',
+    tmuxClickFocusExisting: true,
+    retroBorderEnabled: false,
+    retroAutoApply: true,
   }
 
   const useSettings = create<SettingsState & SettingsActions>()(
@@ -79,6 +94,32 @@ function createURLSyncTestEnv(options?: {
         setUnfocusedOutputInterval: (interval: number) => set({
           unfocusedOutputInterval: Math.max(50, Math.min(1000, interval)),
         }),
+        setLinksEnabled: (linksEnabled: boolean) => set({ linksEnabled }),
+        setLinkActivation: (linkActivation: 'modifier-click' | 'single-click') => set({ linkActivation }),
+        setLinkCustomPatterns: (linkCustomPatterns) => set({ linkCustomPatterns }),
+        addLinkCustomPattern: (pattern) => set((state) => ({
+          linkCustomPatterns: [...state.linkCustomPatterns, pattern],
+        })),
+        removeLinkCustomPattern: (index: number) => set((state) => ({
+          linkCustomPatterns: state.linkCustomPatterns.filter((_, i) => i !== index),
+        })),
+        updateLinkCustomPattern: (index: number, pattern) => set((state) => ({
+          linkCustomPatterns: state.linkCustomPatterns.map((p, i) => i === index ? pattern : p),
+        })),
+        setLayoutIconsEnabled: (layoutIconsEnabled: boolean) => set({ layoutIconsEnabled }),
+        setLayoutIconSize: (size: number) => set({
+          layoutIconSize: [16, 20, 24, 28, 32].includes(size) ? size : 24,
+        }),
+        setLayoutIconStyle: (layoutIconStyle: LayoutIconStyle) => set({ layoutIconStyle }),
+        setLayoutIconShowActivePane: (v: boolean) => set({ layoutIconShowActivePane: v }),
+        setLayoutIconShowActivityColors: (v: boolean) => set({ layoutIconShowActivityColors: v }),
+        setLayoutIconShowAnimations: (v: boolean) => set({ layoutIconShowAnimations: v }),
+        setLayoutIconShowOpacity: (v: boolean) => set({ layoutIconShowOpacity: v }),
+        setTmuxSidebarEnabled: (v: boolean) => set({ tmuxSidebarEnabled: v }),
+        setTmuxSocketPath: (v: string) => set({ tmuxSocketPath: v }),
+        setTmuxClickFocusExisting: (v: boolean) => set({ tmuxClickFocusExisting: v }),
+        setRetroBorderEnabled: (v: boolean) => set({ retroBorderEnabled: v }),
+        setRetroAutoApply: (v: boolean) => set({ retroAutoApply: v }),
         reset: () => set(defaultSettings),
       }),
       {

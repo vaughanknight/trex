@@ -47,7 +47,7 @@ function TestThemeSelector({
 }
 
 describe('TAD Scratch: Theme selector options', () => {
-  it('renders all 12 themes', async () => {
+  it('renders all 15 themes', async () => {
     const user = userEvent.setup()
     const onValueChange = vi.fn()
 
@@ -56,8 +56,8 @@ describe('TAD Scratch: Theme selector options', () => {
     // Open dropdown
     await user.click(screen.getByTestId('theme-trigger'))
 
-    // Check all 12 themes are present
-    expect(themes).toHaveLength(12)
+    // Check all 14 themes are present
+    expect(themes).toHaveLength(15)
 
     // Use getAllByText since current value appears both in trigger and dropdown
     for (const theme of themes) {

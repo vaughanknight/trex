@@ -11,11 +11,15 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { type IdleThresholds, DEFAULT_THRESHOLDS } from '../utils/idleState'
+import type { CustomPattern } from '../lib/linkProvider'
+import type { LayoutIconStyle } from '../lib/layoutIconTree'
 
 // Terminal theme IDs matching themes/index.ts
 export type TerminalTheme =
   | 'default-dark'
   | 'default-light'
+  | 'apple-iie'
+  | 'commodore-64'
   | 'dracula'
   | 'nord'
   | 'solarized-dark'
@@ -25,10 +29,14 @@ export type TerminalTheme =
   | 'gruvbox-light'
   | 'one-dark'
   | 'one-light'
+  | 'street-fighter'
   | 'tokyo-night'
 
-// Bundled fonts from @fontsource packages
+// Bundled fonts from @fontsource packages + custom fonts
 export const BUNDLED_FONTS = [
+  { id: 'apple-iie', name: 'Apple IIe', family: "'Apple IIe', monospace" },
+  { id: 'bescii-mono', name: 'BESCII Mono (C64)', family: "'BESCII Mono', monospace" },
+  { id: 'press-start-2p', name: 'Press Start 2P (Arcade)', family: "'Press Start 2P', monospace" },
   { id: 'fira-code', name: 'Fira Code', family: "'Fira Code', monospace" },
   { id: 'jetbrains-mono', name: 'JetBrains Mono', family: "'JetBrains Mono', monospace" },
   { id: 'source-code-pro', name: 'Source Code Pro', family: "'Source Code Pro', monospace" },
@@ -63,6 +71,36 @@ export interface SettingsState {
   tmuxPollingInterval: number
   /** Output flush interval for unfocused panes in milliseconds (50-1000) */
   unfocusedOutputInterval: number
+  /** Enable/disable clickable link detection in terminal output */
+  linksEnabled: boolean
+  /** Link activation method: modifier+click (safe default) or single click */
+  linkActivation: 'modifier-click' | 'single-click'
+  /** User-defined custom link patterns */
+  linkCustomPatterns: CustomPattern[]
+  /** Master toggle for dynamic layout icons (Plan 019) */
+  layoutIconsEnabled: boolean
+  /** Icon size in pixels (16/20/24/28/32) */
+  layoutIconSize: number
+  /** Visual style for pane dividers */
+  layoutIconStyle: LayoutIconStyle
+  /** Show active/focused pane highlight */
+  layoutIconShowActivePane: boolean
+  /** Show per-pane idle state colors */
+  layoutIconShowActivityColors: boolean
+  /** Show pulse animation on active panes */
+  layoutIconShowAnimations: boolean
+  /** Show opacity variation by idle state */
+  layoutIconShowOpacity: boolean
+  /** Show tmux sessions section in sidebar (Plan 018) */
+  tmuxSidebarEnabled: boolean
+  /** Additional tmux socket path for -L/-S flag (Plan 018) */
+  tmuxSocketPath: string
+  /** Click tmux session focuses existing pane instead of creating duplicate (Plan 018) */
+  tmuxClickFocusExisting: boolean
+  /** Show retro CRT-style border around terminal (C64 mode) */
+  retroBorderEnabled: boolean
+  /** Auto-apply retro font and border when a retro theme is selected */
+  retroAutoApply: boolean
 }
 
 export interface SettingsActions {
@@ -82,6 +120,42 @@ export interface SettingsActions {
   setTmuxPollingInterval: (interval: number) => void
   /** Set unfocused output flush interval in ms (clamped 50-1000) */
   setUnfocusedOutputInterval: (interval: number) => void
+  /** Enable/disable link detection */
+  setLinksEnabled: (enabled: boolean) => void
+  /** Set link activation method */
+  setLinkActivation: (activation: 'modifier-click' | 'single-click') => void
+  /** Replace all custom patterns */
+  setLinkCustomPatterns: (patterns: CustomPattern[]) => void
+  /** Add a custom pattern */
+  addLinkCustomPattern: (pattern: CustomPattern) => void
+  /** Remove a custom pattern by index */
+  removeLinkCustomPattern: (index: number) => void
+  /** Update a custom pattern at index */
+  updateLinkCustomPattern: (index: number, pattern: CustomPattern) => void
+  /** Toggle dynamic layout icons on/off */
+  setLayoutIconsEnabled: (enabled: boolean) => void
+  /** Set icon size (clamped to valid values) */
+  setLayoutIconSize: (size: number) => void
+  /** Set pane divider style */
+  setLayoutIconStyle: (style: LayoutIconStyle) => void
+  /** Toggle active pane highlight */
+  setLayoutIconShowActivePane: (show: boolean) => void
+  /** Toggle activity colors */
+  setLayoutIconShowActivityColors: (show: boolean) => void
+  /** Toggle pulse animations */
+  setLayoutIconShowAnimations: (show: boolean) => void
+  /** Toggle opacity variation */
+  setLayoutIconShowOpacity: (show: boolean) => void
+  /** Toggle tmux sidebar section visibility (Plan 018) */
+  setTmuxSidebarEnabled: (enabled: boolean) => void
+  /** Set tmux socket path (Plan 018) */
+  setTmuxSocketPath: (path: string) => void
+  /** Toggle tmux click-focus-existing behavior (Plan 018) */
+  setTmuxClickFocusExisting: (enabled: boolean) => void
+  /** Toggle retro CRT border */
+  setRetroBorderEnabled: (enabled: boolean) => void
+  /** Toggle retro auto-apply (font + border on theme select) */
+  setRetroAutoApply: (enabled: boolean) => void
   reset: () => void
 }
 
@@ -98,6 +172,21 @@ const defaultSettings: SettingsState = {
   urlConfirmThreshold: 5,
   tmuxPollingInterval: 2000,
   unfocusedOutputInterval: 50,
+  linksEnabled: true,
+  linkActivation: 'modifier-click',
+  linkCustomPatterns: [],
+  layoutIconsEnabled: true,
+  layoutIconSize: 24,
+  layoutIconStyle: 'lines',
+  layoutIconShowActivePane: true,
+  layoutIconShowActivityColors: true,
+  layoutIconShowAnimations: true,
+  layoutIconShowOpacity: true,
+  tmuxSidebarEnabled: true,
+  tmuxSocketPath: '',
+  tmuxClickFocusExisting: true,
+  retroBorderEnabled: false,
+  retroAutoApply: true,
 }
 
 /** Minimum threshold value in milliseconds (1 second) */
@@ -127,10 +216,32 @@ function validateThresholds(thresholds: IdleThresholds): IdleThresholds {
 
 export const useSettingsStore = create<SettingsStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       ...defaultSettings,
 
-      setTheme: (theme) => set({ theme }),
+      setTheme: (theme) => {
+        const state = get()
+        const updates: Partial<SettingsState> = { theme }
+        const isRetroTheme = theme === 'commodore-64' || theme === 'apple-iie' || theme === 'street-fighter'
+        // Auto-apply retro font + border when selecting a retro theme
+        if (state.retroAutoApply && isRetroTheme) {
+          if (theme === 'commodore-64') {
+            updates.fontFamily = "'BESCII Mono', monospace"
+            updates.retroBorderEnabled = true
+          }
+          if (theme === 'apple-iie') {
+            updates.fontFamily = "'Apple IIe', monospace"
+            updates.retroBorderEnabled = false
+          }
+          if (theme === 'street-fighter') {
+            updates.fontFamily = "'Press Start 2P', monospace"
+            updates.retroBorderEnabled = false
+          }
+        } else if (state.retroAutoApply && !isRetroTheme) {
+          updates.retroBorderEnabled = false
+        }
+        set(updates)
+      },
 
       setFontSize: (fontSize) => set({ fontSize }),
 
@@ -158,6 +269,52 @@ export const useSettingsStore = create<SettingsStore>()(
         unfocusedOutputInterval: Math.max(50, Math.min(1000, interval)),
       }),
 
+      setLinksEnabled: (linksEnabled) => set({ linksEnabled }),
+
+      setLinkActivation: (linkActivation) => set({ linkActivation }),
+
+      setLinkCustomPatterns: (linkCustomPatterns) => set({ linkCustomPatterns }),
+
+      addLinkCustomPattern: (pattern) => set((state) => ({
+        linkCustomPatterns: [...state.linkCustomPatterns, pattern],
+      })),
+
+      removeLinkCustomPattern: (index) => set((state) => ({
+        linkCustomPatterns: state.linkCustomPatterns.filter((_, i) => i !== index),
+      })),
+
+      updateLinkCustomPattern: (index, pattern) => set((state) => ({
+        linkCustomPatterns: state.linkCustomPatterns.map((p, i) =>
+          i === index ? pattern : p
+        ),
+      })),
+
+      setLayoutIconsEnabled: (layoutIconsEnabled) => set({ layoutIconsEnabled }),
+
+      setLayoutIconSize: (size) => set({
+        layoutIconSize: [16, 20, 24, 28, 32].includes(size) ? size : 24,
+      }),
+
+      setLayoutIconStyle: (layoutIconStyle) => set({ layoutIconStyle }),
+
+      setLayoutIconShowActivePane: (layoutIconShowActivePane) => set({ layoutIconShowActivePane }),
+
+      setLayoutIconShowActivityColors: (layoutIconShowActivityColors) => set({ layoutIconShowActivityColors }),
+
+      setLayoutIconShowAnimations: (layoutIconShowAnimations) => set({ layoutIconShowAnimations }),
+
+      setLayoutIconShowOpacity: (layoutIconShowOpacity) => set({ layoutIconShowOpacity }),
+
+      setTmuxSidebarEnabled: (tmuxSidebarEnabled) => set({ tmuxSidebarEnabled }),
+
+      setTmuxSocketPath: (tmuxSocketPath) => set({ tmuxSocketPath }),
+
+      setTmuxClickFocusExisting: (tmuxClickFocusExisting) => set({ tmuxClickFocusExisting }),
+
+      setRetroBorderEnabled: (retroBorderEnabled) => set({ retroBorderEnabled }),
+
+      setRetroAutoApply: (retroAutoApply) => set({ retroAutoApply }),
+
       reset: () => set(defaultSettings),
     }),
     {
@@ -176,6 +333,40 @@ export const useSettingsStore = create<SettingsStore>()(
             ...DEFAULT_THRESHOLDS,
             ...((p as Partial<SettingsState>)?.idleThresholds ?? {}),
           },
+          // Ensure linkCustomPatterns is always an array (Plan 017)
+          linkCustomPatterns:
+            (p as Partial<SettingsState>)?.linkCustomPatterns ?? [],
+          // Plan 019: Layout icon settings with ?? fallbacks for migration
+          layoutIconsEnabled:
+            (p as Partial<SettingsState>)?.layoutIconsEnabled ?? defaultSettings.layoutIconsEnabled,
+          layoutIconSize:
+            (p as Partial<SettingsState>)?.layoutIconSize ?? defaultSettings.layoutIconSize,
+          layoutIconStyle:
+            (['lines', 'gaps', 'rounded'] as const).includes(
+              (p as Partial<SettingsState>)?.layoutIconStyle as LayoutIconStyle
+            )
+              ? (p as Partial<SettingsState>)!.layoutIconStyle!
+              : defaultSettings.layoutIconStyle,
+          layoutIconShowActivePane:
+            (p as Partial<SettingsState>)?.layoutIconShowActivePane ?? defaultSettings.layoutIconShowActivePane,
+          layoutIconShowActivityColors:
+            (p as Partial<SettingsState>)?.layoutIconShowActivityColors ?? defaultSettings.layoutIconShowActivityColors,
+          layoutIconShowAnimations:
+            (p as Partial<SettingsState>)?.layoutIconShowAnimations ?? defaultSettings.layoutIconShowAnimations,
+          layoutIconShowOpacity:
+            (p as Partial<SettingsState>)?.layoutIconShowOpacity ?? defaultSettings.layoutIconShowOpacity,
+          // Plan 018: tmux settings with ?? fallbacks for migration
+          tmuxSidebarEnabled:
+            (p as Partial<SettingsState>)?.tmuxSidebarEnabled ?? defaultSettings.tmuxSidebarEnabled,
+          tmuxSocketPath:
+            (p as Partial<SettingsState>)?.tmuxSocketPath ?? defaultSettings.tmuxSocketPath,
+          tmuxClickFocusExisting:
+            (p as Partial<SettingsState>)?.tmuxClickFocusExisting ?? defaultSettings.tmuxClickFocusExisting,
+          // Plan 024: Retro mode settings with ?? fallbacks for migration
+          retroBorderEnabled:
+            (p as Partial<SettingsState>)?.retroBorderEnabled ?? defaultSettings.retroBorderEnabled,
+          retroAutoApply:
+            (p as Partial<SettingsState>)?.retroAutoApply ?? defaultSettings.retroAutoApply,
         }
       },
     }
@@ -193,6 +384,25 @@ export const selectUrlConfirmAlways = (state: SettingsStore) => state.urlConfirm
 export const selectUrlConfirmThreshold = (state: SettingsStore) => state.urlConfirmThreshold
 export const selectTmuxPollingInterval = (state: SettingsStore) => state.tmuxPollingInterval
 export const selectUnfocusedOutputInterval = (state: SettingsStore) => state.unfocusedOutputInterval
+export const selectLinksEnabled = (state: SettingsStore) => state.linksEnabled
+export const selectLinkActivation = (state: SettingsStore) => state.linkActivation
+export const selectLinkCustomPatterns = (state: SettingsStore) => state.linkCustomPatterns
+export const selectLayoutIconsEnabled = (state: SettingsStore) => state.layoutIconsEnabled
+export const selectLayoutIconSize = (state: SettingsStore) => state.layoutIconSize
+export const selectLayoutIconStyle = (state: SettingsStore) => state.layoutIconStyle
+export const selectLayoutIconShowActivePane = (state: SettingsStore) => state.layoutIconShowActivePane
+export const selectLayoutIconShowActivityColors = (state: SettingsStore) => state.layoutIconShowActivityColors
+export const selectLayoutIconShowAnimations = (state: SettingsStore) => state.layoutIconShowAnimations
+export const selectLayoutIconShowOpacity = (state: SettingsStore) => state.layoutIconShowOpacity
+export const selectTmuxSidebarEnabled = (state: SettingsStore) => state.tmuxSidebarEnabled
+export const selectTmuxSocketPath = (state: SettingsStore) => state.tmuxSocketPath
+export const selectTmuxClickFocusExisting = (state: SettingsStore) => state.tmuxClickFocusExisting
+export const selectRetroBorderEnabled = (state: SettingsStore) => state.retroBorderEnabled
+export const selectRetroAutoApply = (state: SettingsStore) => state.retroAutoApply
 
 // Re-export IdleThresholds type for consumers
 export type { IdleThresholds }
+// Re-export CustomPattern type for consumers
+export type { CustomPattern }
+// Re-export LayoutIconStyle for consumers
+export type { LayoutIconStyle }

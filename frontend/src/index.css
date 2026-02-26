@@ -1,6 +1,24 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* BESCII Mono — CC0 licensed C64-inspired pixel font (github.com/damianvila/font-bescii) */
+@font-face {
+  font-family: 'BESCII Mono';
+  src: url('/fonts/Bescii-Mono.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Apple IIe — Classic Apple II monochrome terminal font */
+@font-face {
+  font-family: 'Apple IIe';
+  src: url('/fonts/Apple-IIe.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 /* Minimal reset for terminal app */
@@ -8,6 +26,28 @@
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+/* Theme-aware scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--foreground) rgba(128, 128, 128, 0.05);
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: rgba(128, 128, 128, 0.05);
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--foreground);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--foreground);
 }
 
 html,
@@ -150,4 +190,19 @@ body {
 
 .animate-blink-cursor {
   animation: blink-cursor 1s step-end infinite;
+}
+
+@keyframes layout-icon-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.animate-layout-icon-pulse {
+  animation: layout-icon-pulse 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-layout-icon-pulse {
+    animation: none;
+  }
 }

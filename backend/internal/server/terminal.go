@@ -528,15 +528,12 @@ func (h *connectionHandler) pollCwd(ctx context.Context) {
 					tmuxProcesses := h.detectTmuxSessionProcesses(session.TmuxSessionName)
 					processes = append(processes, tmuxProcesses...)
 				}
-				log.Printf("[plugin] session %s (pid %d, tmux=%q): processes=%v, registry=%d collectors",
-					session.ID, pid, session.TmuxSessionName, processes, h.collectorRegistry.Count())
 				if len(processes) == 0 {
 					continue
 				}
 				collectors := h.collectorRegistry.FindMatching(processes)
-				log.Printf("[plugin] session %s: %d matching collectors", session.ID, len(collectors))
 				for _, collector := range collectors {
-					data, err := collector.Collect()
+					data, err := collector.CollectForSession(pid, session.Cwd)
 					if err != nil {
 						log.Printf("Collector %s error for session %s: %v", collector.ID(), session.ID, err)
 						continue

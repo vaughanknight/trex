@@ -2,7 +2,6 @@ package copilot
 
 import (
 	"encoding/json"
-	"log"
 	"time"
 
 	"github.com/vaughanknight/trex/internal/terminal"
@@ -31,14 +30,11 @@ func (c *Collector) ProcessMatch(processes []string) bool {
 }
 
 func (c *Collector) Collect() (json.RawMessage, error) {
-	data, err := ReadSessionDB()
-	if err != nil {
-		log.Printf("[copilot-todos] collect error: %v", err)
-	}
-	if data != nil {
-		log.Printf("[copilot-todos] collected %d bytes", len(data))
-	}
-	return data, err
+	return ReadSessionDB()
+}
+
+func (c *Collector) CollectForSession(pid int, cwd string) (json.RawMessage, error) {
+	return ReadSessionDBForProcess(pid, cwd)
 }
 
 func (c *Collector) Interval() time.Duration {

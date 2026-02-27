@@ -16,6 +16,8 @@ type DataCollector interface {
 	ProcessMatch(processes []string) bool
 	// Collect gathers data and returns it as JSON. Returns nil if no data available.
 	Collect() (json.RawMessage, error)
+	// CollectForSession gathers data scoped to a specific session by PID and cwd.
+	CollectForSession(pid int, cwd string) (json.RawMessage, error)
 	// Interval returns the minimum polling interval for this collector.
 	Interval() time.Duration
 }
@@ -56,6 +58,10 @@ func (f *FakeDataCollector) Collect() (json.RawMessage, error) {
 		return nil, f.Err
 	}
 	return f.Data, nil
+}
+
+func (f *FakeDataCollector) CollectForSession(pid int, cwd string) (json.RawMessage, error) {
+	return f.Collect()
 }
 
 func (f *FakeDataCollector) Interval() time.Duration { return f.PollInterval }

@@ -1,0 +1,157 @@
+# Session State Schema
+# Defines all keys that skills write to the session_state table.
+# The backend reader queries this table dynamically (SELECT key, value).
+# The meta-skill (scripts/session-state-apply.md) validates injections against this schema.
+version: 1
+
+# Table definition
+table:
+  name: session_state
+  columns:
+    - name: key
+      type: TEXT PRIMARY KEY
+    - name: value
+      type: TEXT
+    - name: updated_at
+      type: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+# Key definitions
+keys:
+  # Core keys — set by every skill
+  current_skill:
+    type: string
+    required: true
+    description: "Active skill ID (e.g., plan-6, plan-1a)"
+    set_by: all
+    inherit: false
+
+  workflow_phase:
+    type: string
+    required: true
+    description: "Human-readable phase name (e.g., Execution, Discovery, Architecture)"
+    set_by: all
+    inherit: false
+
+  status:
+    type: string
+    required: true
+    description: "Current status (in_progress, completed, blocked)"
+    set_by: all
+    inherit: false
+
+  activity:
+    type: string
+    required: true
+    description: "Human-readable activity description for display"
+    set_by: all
+    inherit: false
+
+  # Plan context — set by plan skills, inherited by subsequent skills
+  plan_slug:
+    type: string
+    required: false
+    description: "Plan folder slug (e.g., 025-visualisation-plugins)"
+    set_by: [plan-1a, plan-1b, plan-2, plan-3, plan-5, plan-6]
+    inherit: true
+
+  plan_name:
+    type: string
+    required: false
+    description: "Human-readable plan name (e.g., Visualisation Plugin System)"
+    set_by: [plan-1b, plan-2, plan-3, plan-5, plan-6]
+    inherit: true
+
+  plan_number:
+    type: string
+    required: false
+    description: "Plan ordinal number (e.g., 025)"
+    set_by: [plan-1a, plan-1b]
+    inherit: true
+
+  # Phase context — set during plan-5/6/7
+  phase_heading:
+    type: string
+    required: false
+    description: "Current phase heading (e.g., Phase 3: Rendering Surfaces)"
+    set_by: [plan-5, plan-6, plan-6a, plan-7]
+    inherit: true
+
+  phase_number:
+    type: string
+    required: false
+    description: "Current phase number (e.g., 3)"
+    set_by: [plan-5, plan-6]
+    inherit: true
+
+  total_phases:
+    type: string
+    required: false
+    description: "Total number of phases in the plan"
+    set_by: [plan-3, plan-5, plan-6]
+    inherit: true
+
+  # Task context — set during plan-6
+  current_task_id:
+    type: string
+    required: false
+    description: "Current task ID (e.g., T004)"
+    set_by: [plan-6, plan-6a]
+    inherit: false
+
+  current_task_title:
+    type: string
+    required: false
+    description: "Current task title"
+    set_by: [plan-6, plan-6a]
+    inherit: false
+
+# Skill-to-context mappings for meta-skill injection
+skills:
+  plan-0:
+    phase: Setup
+    activity_template: "Setting up project constitution"
+  plan-1a:
+    phase: Discovery
+    activity_template: "Exploring: {plan_name}"
+  plan-1b:
+    phase: Specification
+    activity_template: "Specifying: {plan_name}"
+  plan-2:
+    phase: Clarification
+    activity_template: "Clarifying: {plan_name}"
+  plan-2c:
+    phase: Workshop
+    activity_template: "Workshopping: {plan_name}"
+  plan-3:
+    phase: Architecture
+    activity_template: "Architecting: {plan_name}"
+  plan-4:
+    phase: Validation
+    activity_template: "Validating: {plan_name}"
+  plan-5:
+    phase: Tasking
+    activity_template: "Creating tasks: {phase_heading}"
+  plan-6:
+    phase: Execution
+    activity_template: "Implementing: {phase_heading}"
+  plan-6a:
+    phase: Progress
+    activity_template: "Updating: {current_task_title}"
+  plan-7:
+    phase: Review
+    activity_template: "Reviewing: {phase_heading}"
+  iterate-1:
+    phase: Iteration
+    activity_template: "Establishing baseline"
+  iterate-2:
+    phase: Iteration
+    activity_template: "Planning iteration"
+  iterate-3:
+    phase: Iteration
+    activity_template: "Iterating"
+  didyouknow:
+    phase: Reflection
+    activity_template: "Critical insights"
+  util-0:
+    phase: Handover
+    activity_template: "Generating handover"

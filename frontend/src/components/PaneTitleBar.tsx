@@ -17,7 +17,8 @@ import { useSessionStore } from '../stores/sessions'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useSettingsStore } from '../stores/settings'
 import { useCentralWebSocket } from '../hooks/useCentralWebSocket'
-import { getAllPlugins } from '../plugins/pluginRegistry'
+import { getAllPlugins, type VisualisationPlugin } from '../plugins/pluginRegistry'
+import { PluginPanel } from './PluginPanel'
 import { countTerminalPanes } from '../lib/layoutTree'
 
 interface PaneTitleBarProps {
@@ -34,6 +35,8 @@ export function PaneTitleBar({ itemId, paneId, sessionId, isFocused, translucent
   const dragRef = useRef<HTMLDivElement>(null)
   const [isHovered, setIsHovered] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  const [openPlugin, setOpenPlugin] = useState<VisualisationPlugin | null>(null)
+  const [panelPinned, setPanelPinned] = useState(false)
   const sessionName = useSessionStore(
     (state) => state.sessions.get(sessionId)?.name ?? 'Session'
   )
@@ -137,6 +140,7 @@ export function PaneTitleBar({ itemId, paneId, sessionId, isFocused, translucent
   const titleBarHoverOpacity = useSettingsStore((s) => s.titleBarHoverOpacity)
 
   return (
+    <>
     <div
       ref={dragRef}
       onMouseEnter={() => setIsHovered(true)}
@@ -170,12 +174,20 @@ export function PaneTitleBar({ itemId, paneId, sessionId, isFocused, translucent
         </span>
       )}
       <span className="truncate flex-1 font-mono">{sessionName}</span>
-      {/* Plugin widget slots */}
+      {/* Plugin widget slots — click to open panel */}
       {getAllPlugins().map(plugin => {
         const settings = useSettingsStore.getState().pluginSettings[plugin.id]
         if (settings && !settings.enabled) return null
         if (settings && !settings.titleBar) return null
-        return <plugin.TitleBarWidget key={plugin.id} sessionId={sessionId} paneId={paneId} />
+        return (
+          <button
+            key={plugin.id}
+            onClick={(e) => { e.stopPropagation(); setOpenPlugin(openPlugin?.id === plugin.id ? null : plugin) }}
+            className="flex items-center hover:opacity-80 transition-opacity"
+          >
+            <plugin.TitleBarWidget sessionId={sessionId} paneId={paneId} />
+          </button>
+        )
       })}
       <button
         onClick={handleSplitH}
@@ -210,5 +222,16 @@ export function PaneTitleBar({ itemId, paneId, sessionId, isFocused, translucent
         <X className="size-3" />
       </button>
     </div>
+    {openPlugin && (
+      <PluginPanel
+        plugin={openPlugin}
+        sessionId={sessionId}
+        paneId={paneId}
+        pinned={panelPinned}
+        onTogglePin={() => setPanelPinned(!panelPinned)}
+        onClose={() => { setOpenPlugin(null); setPanelPinned(false) }}
+      />
+    )}
+    </>
   )
 }
